@@ -333,7 +333,7 @@ def _shell_ladder_body() -> int:
     shell = 0
     with tempfile.TemporaryDirectory(dir=fixture_root(),
                                      ignore_cleanup_errors=True) as td:
-        base = Path(td)
+        base = Path(td).resolve()
 
         # rung 1 -- the KILLING rung, and it grades a VERDICT, not a scope refusal.
         # The fixture's guide documents oz.probe_missing_binding, which manager.rs

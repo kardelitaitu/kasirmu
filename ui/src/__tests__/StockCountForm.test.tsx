@@ -60,6 +60,42 @@ describe('StockCountForm', () => {
     expect(screen.getByRole('radio', { name: /full inventory/i })).toHaveAttribute('aria-checked', 'false');
   });
 
+  it('applies roving tabindex to count type options', () => {
+    renderWithFluentSync(<StockCountForm onCreated={vi.fn()} onCancel={vi.fn()} />, inventoryFtl, scFtl);
+    const fullBtn = screen.getByRole('radio', { name: /full inventory/i });
+    const cyclicBtn = screen.getByRole('radio', { name: /cyclic count/i });
+    const spotBtn = screen.getByRole('radio', { name: /spot check/i });
+
+    expect(fullBtn).toHaveAttribute('tabIndex', '0');
+    expect(cyclicBtn).toHaveAttribute('tabIndex', '-1');
+    expect(spotBtn).toHaveAttribute('tabIndex', '-1');
+  });
+
+  it('supports arrow key navigation across count types', () => {
+    renderWithFluentSync(<StockCountForm onCreated={vi.fn()} onCancel={vi.fn()} />, inventoryFtl, scFtl);
+    const fullBtn = screen.getByRole('radio', { name: /full inventory/i });
+    const cyclicBtn = screen.getByRole('radio', { name: /cyclic count/i });
+    const spotBtn = screen.getByRole('radio', { name: /spot check/i });
+
+    // ArrowRight: full -> cyclic
+    fireEvent.keyDown(fullBtn, { key: 'ArrowRight' });
+    expect(cyclicBtn).toHaveAttribute('aria-checked', 'true');
+    expect(cyclicBtn).toHaveAttribute('tabIndex', '0');
+    expect(fullBtn).toHaveAttribute('tabIndex', '-1');
+
+    // ArrowRight: cyclic -> spot
+    fireEvent.keyDown(cyclicBtn, { key: 'ArrowRight' });
+    expect(spotBtn).toHaveAttribute('aria-checked', 'true');
+
+    // ArrowRight: spot wraps -> full
+    fireEvent.keyDown(spotBtn, { key: 'ArrowRight' });
+    expect(fullBtn).toHaveAttribute('aria-checked', 'true');
+
+    // ArrowLeft: full wraps -> spot
+    fireEvent.keyDown(fullBtn, { key: 'ArrowLeft' });
+    expect(spotBtn).toHaveAttribute('aria-checked', 'true');
+  });
+
   it('allows entering notes', async () => {
     renderWithFluentSync(<StockCountForm onCreated={vi.fn()} onCancel={vi.fn()} />, inventoryFtl, scFtl);
     const textarea = screen.getByRole('textbox');

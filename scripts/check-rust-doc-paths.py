@@ -54,12 +54,23 @@ Exit 0 clean, 1 findings, 2 could not run.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 
 #: Refuse a corpus below this. A real tree here holds ~1430 `.rs` files, so the floor is
 #: set far below it and exists only to catch a ZERO — a renamed top-level directory, a
@@ -473,118 +484,149 @@ def self_test() -> int:
         want("tracked() does not answer with another checkout's paths",
              "Cargo.toml" in tracked(_repo), False)
 
-    # r201: the shell -- main() graded through argv and a contract root, the
-    # r166..r200 pattern. The fixture is a scratch GIT repository (tracked()
-    # and ever_existed() both need git) with a two-file corpus, so the
-    # corpus floor is lowered for the ladder and restored for its own case.
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (25 pure cases)")
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell over a scratch git repository."""
     import contextlib as _ctx
     import io as _io
     import tempfile as _tempfile
-    shell = 0
+
+    rungs = 0
     saved_floor = globals()["MIN_RUST_FILES"]
-    globals()["MIN_RUST_FILES"] = 2
-    with _tempfile.TemporaryDirectory() as tdp:
-        base = Path(tdp)
-        repo = base
-        (repo / "crates" / "real" / "src").mkdir(parents=True)
-        (repo / "crates" / "gone" / "src").mkdir(parents=True)
-        (repo / "crates" / "real" / "src" / "lib.rs").write_text(
-            "//! live module\n" + "pub fn f() {}\n", encoding="utf-8")
-        (repo / "crates" / "real" / "src" / "libreal.rs").write_text(
-            "//! helper module\n" + "pub fn g() {}\n", encoding="utf-8")
-        (repo / "crates" / "gone" / "src" / "lib.rs").write_text(
-            "//! dead module\n", encoding="utf-8")
-        doc = repo / "crates" / "real" / "src" / "doc.rs"
-        def git(*a):
-            return subprocess.run(["git", "-C", str(repo)] + list(a),
-                                  capture_output=True, text=True)
-        assert git("init", "-q").returncode == 0
-        git("config", "user.name", "probe")
-        git("config", "user.email", "probe@example.invalid")
-        git("add", "-A")
-        git("commit", "-q", "-m", "seed")
-        git("rm", "-q", "-r", "crates/gone")
-        git("commit", "-q", "-m", "drop gone")
-        def run():
-            out, err = _io.StringIO(), _io.StringIO()
-            try:
-                with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
-                    rc = main(argv=[], root=repo)
-            except SystemExit as se:
-                return se.code, out.getvalue() + err.getvalue()
-            return rc, out.getvalue() + err.getvalue()
-        # (S1) a clean tree whose doc cites a TRACKED path parses clean
-        shell += 1
-        doc.write_text("//! mirrors crates/real/src/lib.rs exactly\n", encoding="utf-8")
-        rc, text = run()
-        if rc != 0 or "clean - 3 .rs file(s) scanned" not in text:
-            print("  x a tracked path citation must read clean (rc=%r text=%r)"
-                  % (rc, text[-90:]), file=sys.stderr)
-            return 1
-        # (S2) a doc naming an ABSENT path is the founding defect
-        shell += 1
-        doc.write_text("//! mirrors crates/phantom/src/lib.rs exactly\n", encoding="utf-8")
-        rc, text = run()
-        if rc != 1 or "names a path that does not exist" not in text:
-            print("  x an absent path must fail rc 1 (rc=%r text=%r)"
-                  % (rc, text[-90:]), file=sys.stderr)
-            return 1
-        # (S3) a line citation past EOF -- full path form
-        shell += 1
-        doc.write_text("//! see crates/real/src/lib.rs:99\n", encoding="utf-8")
-        rc, text = run()
-        if rc != 1 or "cites line 99 but the file has 2" not in text:
-            print("  x a past-EOF line citation must fail (rc=%r text=%r)"
-                  % (rc, text[-90:]), file=sys.stderr)
-            return 1
-        # (S4) the SAME via the bare-basename arm: libreal.rs is unique here
-        shell += 1
-        doc.write_text("//! see libreal.rs:99\n", encoding="utf-8")
-        rc, text = run()
-        if rc != 1 or "cites line 99 but the file has 2" not in text:
-            print("  x a bare basename citation must resolve and grade (rc=%r text=%r)"
-                  % (rc, text[-90:]), file=sys.stderr)
-            return 1
-        # (S5) the history exemption: a path that EXISTED (committed, then
-        # deleted) under a past-tense marker is allowed
-        shell += 1
-        doc.write_text("//! relocated from crates/gone/src/lib.rs\n", encoding="utf-8")
-        rc, text = run()
-        if rc != 0 or "clean - 3 .rs file(s)" not in text:
-            print("  x a real historical move must be exempt (rc=%r text=%r)"
-                  % (rc, text[-90:]), file=sys.stderr)
-            return 1
-        # (S6) rule 2: a move cannot be recorded FROM a path that never existed
-        shell += 1
-        doc.write_text("//! relocated from crates/never/src/lib.rs\n", encoding="utf-8")
-        rc, text = run()
-        if rc != 1 or "NEVER existed" not in text:
-            print("  x an invented historical path must fail (rc=%r text=%r)"
-                  % (rc, text[-90:]), file=sys.stderr)
-            return 1
-    globals()["MIN_RUST_FILES"] = saved_floor
-    # (S7) the zero-corpus floor: with the real floor restored, an empty
-    # root refuses rc 2 instead of printing clean
-    shell += 1
-    with _tempfile.TemporaryDirectory() as tdp2:
-        rc, text = None, ""
+    try:
+        globals()["MIN_RUST_FILES"] = 2
+        with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as tdp:
+            fixture_repo = Path(tdp).resolve()
+            (fixture_repo / "crates" / "real" / "src").mkdir(parents=True)
+            (fixture_repo / "crates" / "gone" / "src").mkdir(parents=True)
+            (fixture_repo / "crates" / "real" / "src" / "lib.rs").write_text(
+                "//! live module\n" + "pub fn f() {}\n", encoding="utf-8")
+            (fixture_repo / "crates" / "real" / "src" / "libreal.rs").write_text(
+                "//! helper module\n" + "pub fn g() {}\n", encoding="utf-8")
+            (fixture_repo / "crates" / "gone" / "src" / "lib.rs").write_text(
+                "//! dead module\n", encoding="utf-8")
+            doc = fixture_repo / "crates" / "real" / "src" / "doc.rs"
+
+            def git(*a):
+                return subprocess.run(["git", "-C", str(fixture_repo)] + list(a),
+                                      capture_output=True, text=True)
+
+            assert git("init", "-q").returncode == 0
+            git("config", "user.name", "probe")
+            git("config", "user.email", "probe@example.invalid")
+            git("add", "-A")
+            git("commit", "-q", "-m", "seed")
+            git("rm", "-q", "-r", "crates/gone")
+            git("commit", "-q", "-m", "drop gone")
+
+            def run(argv=None):
+                out, err = _io.StringIO(), _io.StringIO()
+                try:
+                    with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                        rc = main(argv=[] if argv is None else argv, root=fixture_repo)
+                except SystemExit as se:
+                    return se.code, out.getvalue() + err.getvalue()
+                return rc, out.getvalue() + err.getvalue()
+
+            # rung 1 -- the KILLING rung: a doc naming an ABSENT path must fail rc 1
+            rungs += 1
+            doc.write_text("//! mirrors crates/phantom/src/lib.rs exactly\n", encoding="utf-8")
+            rc, text = run()
+            if rc != 1 or "names a path that does not exist" not in text:
+                print(f"  x rung 1: absent path must fail rc 1 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+                return 1
+
+            # rung 2 -- a clean tree whose doc cites a TRACKED path parses clean
+            rungs += 1
+            doc.write_text("//! mirrors crates/real/src/lib.rs exactly\n", encoding="utf-8")
+            rc, text = run()
+            if rc != 0 or "clean - 3 .rs file(s) scanned" not in text:
+                print(f"  x rung 2: tracked path citation must read clean (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+                return 1
+
+            # rung 3 -- a line citation past EOF (full path form)
+            rungs += 1
+            doc.write_text("//! see crates/real/src/lib.rs:99\n", encoding="utf-8")
+            rc, text = run()
+            if rc != 1 or "cites line 99 but the file has 2" not in text:
+                print(f"  x rung 3: past-EOF line citation must fail (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+                return 1
+
+            # rung 4 -- bare basename line citation past EOF
+            rungs += 1
+            doc.write_text("//! see libreal.rs:99\n", encoding="utf-8")
+            rc, text = run()
+            if rc != 1 or "cites line 99 but the file has 2" not in text:
+                print(f"  x rung 4: bare basename citation must fail (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+                return 1
+
+            # rung 5 -- real historical move must be exempt
+            rungs += 1
+            doc.write_text("//! relocated from crates/gone/src/lib.rs\n", encoding="utf-8")
+            rc, text = run()
+            if rc != 0 or "clean - 3 .rs file(s)" not in text:
+                print(f"  x rung 5: real historical move must be exempt (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+                return 1
+
+            # rung 6 -- rule 2: invented historical path must fail
+            rungs += 1
+            doc.write_text("//! relocated from crates/never/src/lib.rs\n", encoding="utf-8")
+            rc, text = run()
+            if rc != 1 or "NEVER existed" not in text:
+                print(f"  x rung 6: invented historical path must fail (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+                return 1
+    finally:
+        globals()["MIN_RUST_FILES"] = saved_floor
+
+    # rung 7 -- sub-floor corpus refuses rc 2
+    rungs += 1
+    with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as tdp2:
         out, err = _io.StringIO(), _io.StringIO()
         try:
             with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
-                rc = main(argv=[], root=Path(tdp2))
+                rc = main(argv=[], root=Path(tdp2).resolve())
         except SystemExit as se:
             rc = se.code
         text = out.getvalue() + err.getvalue()
         if rc != 2 or "REFUSED - only" not in text:
-            print("  x a sub-floor corpus must refuse rc 2 (rc=%r text=%r)"
-                  % (rc, text[-90:]), file=sys.stderr)
+            print(f"  x rung 7: sub-floor corpus must refuse rc 2 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
             return 1
 
-    if bad:
-        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
-        return 2
-    print("SELF-TEST OK (25 pure cases + %d shell cases over a scratch git "
-          "repository, no checkout read)" % shell)
+    # rung 8 -- nested --self-test passes rc 0 through argv under re-entry guard
+    rungs += 1
+    out, err = _io.StringIO(), _io.StringIO()
+    try:
+        with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+            rc = main(argv=["--self-test"])
+    except SystemExit as se:
+        rc = se.code
+    text = out.getvalue() + err.getvalue()
+    if rc != 0 or "SELF-TEST OK" not in text:
+        print(f"  x rung 8: nested --self-test must exit 0 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+        return 1
+
+    print(f"LADDER OK ({rungs} rungs: absent-path-kill, tracked-clean, eof-line, bare-basename, history-exempt, rule2-invented, subfloor-refusal, nested-selftest)")
     return 0
 
 

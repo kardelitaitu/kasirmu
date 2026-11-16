@@ -1321,15 +1321,85 @@ describe('PaymentModal — edge cases', () => {
 
   // ── Printer error handling in done state ────────────────────────────
 
-  // Needs proper mocking of complete_sale to reach the done state; the current
-  // mock times out. Previously an `expect(true).toBe(true)` stub that reported
-  // green while asserting nothing — demoted to it.todo so the gap shows up in
-  // the reporter instead of hiding behind a pass.
-  it.todo('handles printer error gracefully in done state');
+  it('handles printer error gracefully in done state', async () => {
+    const onComplete = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    invokeMock.mockImplementation((cmd: string): any => {
+      if (cmd === 'complete_sale' || cmd === 'complete_sale_scoped') {
+        return Promise.resolve({ saleId: 'sale-1', total: { minor_units: 700, currency: 'USD' }, lineCount: 1 });
+      }
+      if (cmd === 'print_sales_receipt' || cmd === 'print_sales_receipt_scoped') {
+        return Promise.reject(new Error('no receipt printer registered'));
+      }
+      return defaultImpl(cmd);
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        sessionToken="mock-session-token"
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={onComplete}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const tenderInput = screen.getByLabelText(/amount tendered/i);
+    await userEvent.type(tenderInput, '10');
+    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+
+    await waitFor(() => {
+      expect(document.querySelector('.receipt-preview')).toBeInTheDocument();
+    });
+
+    const printBtn = screen.getByRole('button', { name: /print/i });
+    await userEvent.click(printBtn);
+
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalled();
+    });
+  });
 
   // ── Multi-currency exchange rate notice ──────────────────────────────
 
-  // Needs proper mocking of subscription capabilities and currencies; currently
-  // times out. Same demotion as above — was a vacuous stub.
-  it.todo('shows exchange rate notice when charge currency differs from total currency');
+  it('shows exchange rate notice when charge currency differs from total currency', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    invokeMock.mockImplementation((cmd: string): any => {
+      if (cmd === 'get_latest_exchange_rate_scoped') {
+        return Promise.resolve({
+          id: 'rate-1',
+          from_currency: 'USD',
+          to_currency: 'IDR',
+          rate_millionths: 16_000_000_000,
+          source: 'Bank Indonesia',
+          effective_date: '2026-11-13',
+          created_at: new Date().toISOString(),
+        });
+      }
+      return defaultImpl(cmd);
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        sessionToken="mock-session-token"
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const currencySelect = await screen.findByLabelText('Select charge currency');
+    await userEvent.selectOptions(currencySelect, 'IDR');
+
+    await waitFor(() => {
+      expect(screen.getByText(/1 USD = 16000\.000000 IDR/)).toBeInTheDocument();
+      expect(screen.getByText('Bank Indonesia')).toBeInTheDocument();
+      expect(screen.getByText('2026-11-13')).toBeInTheDocument();
+    });
+  });
 });

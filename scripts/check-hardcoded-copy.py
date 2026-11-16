@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -59,6 +60,16 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 BUDGET_FILE = REPO / "scripts" / "hardcoded-copy-budget.json"
 UI = REPO / "ui" / "src"
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 
 #: How many source files the last scan() actually READ. A module-level counter,
 #: not a return value, so "0 findings" and "0 files read" cannot print the same
@@ -219,14 +230,14 @@ def scan(root=None) -> dict[str, int]:
     r180: root redirects the sweep AND the relative keys together.
     """
     global FILES_READ
-    base = REPO if root is None else Path(root).resolve()
-    ui = UI if root is None else base / "ui" / "src"
+    scan_root = REPO if root is None else Path(root).resolve()
+    ui = UI if root is None else scan_root / "ui" / "src"
     counts: dict[str, int] = {}
     FILES_READ = 0
     if not ui.is_dir():
         return counts
     for path in sorted(ui.rglob("*.tsx")) + sorted(ui.rglob("*.ts")):
-        rel = path.relative_to(base).as_posix()
+        rel = path.relative_to(scan_root).as_posix()
         if any(part in rel.split("/") for part in SKIP_DIR_PARTS):
             continue
         if rel.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")):
@@ -423,16 +434,46 @@ def self_test() -> int:
     if live == 0:
         bad.append("the live scan read 0 files, so the floor cannot distinguish anything")
 
-    # r180: main()'s shell -- argv and root graded against a tempdir fixture
-    # carrying the source AND the budget, the r166..r179 pattern. --update
-    # must write the FIXTURE's budget; the detector preflight is skipped by
-    # giving the fixture a source the real detector genuinely classifies.
+    if bad:
+        sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
+        return 2
+    shapes = len(REGRESSION_CATCH) + len(REGRESSION_IGNORE)
+    print(
+        "SELF-TEST OK (%d cases: %d graded shapes + 1 census floor + 1 live read)"
+        % (cases, shapes)
+    )
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository."""
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+
     shell = 0
     COPY = 'export const A = () => <input placeholder="Search products here" />\n'
-    def _shell(files, argv=None, check=None):
-        import tempfile as _tempfile
-        with _tempfile.TemporaryDirectory() as td:
-            base = Path(td)
+    BUD = {"description": "fixture", "total": 1,
+           "files": {"ui/src/x/A.tsx": 1}}
+
+    def _shell(files, argv=None):
+        with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+            base = Path(td).resolve()
             for rel, content in files.items():
                 dst = base / rel
                 dst.parent.mkdir(parents=True, exist_ok=True)
@@ -440,48 +481,69 @@ def self_test() -> int:
             out, err = _io.StringIO(), _io.StringIO()
             with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
                 rc = main(argv=[] if argv is None else argv, root=base)
-            # the caller's existence checks must run INSIDE this context:
-            # after the with-block the tempdir is already deleted.
-            return rc, out.getvalue() + err.getvalue(), base
-    BUD = {"description": "fixture", "total": 1,
-           "files": {"ui/src/x/A.tsx": 1}}
-    shell += 1
-    rc, text, _b = _shell({"ui/src/x/A.tsx": COPY, "scripts/hardcoded-copy-budget.json": json.dumps(BUD)})
-    if rc != 0 or "no file exceeds" not in text or "1 across 1" not in text:
-        bad.append(f"a budgeted string must exit 0 (rc={rc} text={text[-100:]!r})")
-    shell += 1
-    rc, text, _b = _shell({"ui/src/x/A.tsx": COPY,
-                           "scripts/hardcoded-copy-budget.json": json.dumps({**BUD, "files": {}})})
-    if rc != 1 or "NEW HARDCODED COPY" not in text or "ui/src/x/A.tsx" not in text:
-        bad.append(f"unbudgeted copy must exit 1 naming the file (rc={rc} text={text[-100:]!r})")
-    shell += 1
-    rc, text, _b = _shell({"ui/src/x/A.tsx": COPY})
-    if rc != 2 or "budget file missing" not in text:
-        bad.append(f"a missing budget must refuse with exit 2 (rc={rc} text={text[-100:]!r})")
-    shell += 1
-    # the placeholder budget gives the fixture a scripts/ directory for
-    # --update to write into; the real checkout has one by construction.
-    def _budget_exists(base):
-        return (base / "scripts" / "hardcoded-copy-budget.json").is_file()
-    shell_case = _shell({"ui/src/x/A.tsx": COPY,
-                         "scripts/hardcoded-copy-budget.json": "{}"},
-                        argv=["--update"], check=_budget_exists)
-    rc, text, wrote = shell_case
-    if rc != 0 or "budget written" not in text or not wrote:
-        bad.append(f"--update must write the FIXTURE's budget and exit 0 (rc={rc} text={text[-100:]!r})")
-    shell += 1
-    rc, text, _b = _shell({"README.md": "no sources here"})
-    if rc != 2 or "SCAN READ NOTHING" not in text:
-        bad.append(f"a corpus with no sources must refuse with exit 2 (rc={rc})")
+            return rc, out.getvalue() + err.getvalue()
 
-    if bad:
-        sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
-        return 2
-    shapes = len(REGRESSION_CATCH) + len(REGRESSION_IGNORE)
-    print(
-        "SELF-TEST OK (%d cases: %d graded shapes + 1 census floor + 1 live read + %d shell)"
-        % (cases + shell, shapes, shell)
-    )
+    # rung 1 -- the KILLING rung: unbudgeted copy must exit 1 naming the file
+    shell += 1
+    rc, text = _shell({"ui/src/x/A.tsx": COPY,
+                       "scripts/hardcoded-copy-budget.json": json.dumps({**BUD, "files": {}})})
+    if rc != 1 or "NEW HARDCODED COPY" not in text or "ui/src/x/A.tsx" not in text:
+        print("  x rung 1: unbudgeted copy must exit 1 naming the file (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+
+    # rung 2 -- budgeted string must exit 0
+    shell += 1
+    rc, text = _shell({"ui/src/x/A.tsx": COPY, "scripts/hardcoded-copy-budget.json": json.dumps(BUD)})
+    if rc != 0 or "no file exceeds" not in text or "1 across 1" not in text:
+        print("  x rung 2: a budgeted string must exit 0 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+
+    # rung 3 -- a missing budget must refuse with exit 2
+    shell += 1
+    rc, text = _shell({"ui/src/x/A.tsx": COPY})
+    if rc != 2 or "budget file missing" not in text:
+        print("  x rung 3: a missing budget must refuse with exit 2 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+
+    # rung 4 -- --update must write the FIXTURE's budget and exit 0
+    shell += 1
+    with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+        base = Path(td).resolve()
+        dst = base / "ui" / "src" / "x" / "A.tsx"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text(COPY, encoding="utf-8")
+        (base / "scripts").mkdir(parents=True, exist_ok=True)
+        (base / "scripts" / "hardcoded-copy-budget.json").write_text("{}", encoding="utf-8")
+        out, err = _io.StringIO(), _io.StringIO()
+        with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+            rc = main(argv=["--update"], root=base)
+        text = out.getvalue() + err.getvalue()
+        wrote = (base / "scripts" / "hardcoded-copy-budget.json").is_file()
+        if rc != 0 or "budget written" not in text or not wrote:
+            print("  x rung 4: --update must write the FIXTURE's budget and exit 0 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+    # rung 5 -- a corpus with no sources must refuse with exit 2
+    shell += 1
+    rc, text = _shell({"README.md": "no sources here"})
+    if rc != 2 or "SCAN READ NOTHING" not in text:
+        print("  x rung 5: a corpus with no sources must refuse with exit 2 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+        return 1
+
+    # rung 6 -- nested --self-test passes through argv under re-entry guard
+    shell += 1
+    rc, text = _shell({"ui/src/x/A.tsx": COPY}, argv=["--self-test"])
+    if rc != 0 or "SELF-TEST OK" not in text or "LADDER OK" in text:
+        print("  x rung 6: nested --self-test must exit 0 without running duplicate ladder (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+        return 1
+
+    print("LADDER OK (%d rungs: unbudgeted-copy-kill, budgeted-clean, missing-budget, update-flag, empty-corpus, nested-selftest)" % shell)
     return 0
 
 

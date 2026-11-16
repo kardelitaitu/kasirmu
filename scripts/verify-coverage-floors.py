@@ -536,7 +536,7 @@ def _shell_ladder_body() -> int:
 
     with tempfile.TemporaryDirectory(dir=fixture_root(),
                                      ignore_cleanup_errors=True) as td:
-        base = Path(td)
+        base = Path(td).resolve()
         floors_doc = {"scripts/coverage-floors.json": FLOORS_DOC}
 
         # rung 1 -- the KILLING rung, and it must die on a VERDICT.

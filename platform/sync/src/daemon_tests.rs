@@ -2653,6 +2653,432 @@ async fn network_jitter_resilience_and_exponential_backoff_retry() {
     wait_for_stopped(&daemon).await;
 }
 
+/// Two tablets sync convergence under hostile clock skew (past vs future) and timestamp collision.
+///
+/// Addresses roadmap Phase 2.1 / beta readiness:
+///   - Tablet 1: clock running 14 days in the PAST ("2026-10-30T08:15:00.000Z")
+///   - Tablet 2: clock running 14 days in the FUTURE ("2026-11-27T16:45:00.000Z")
+///   - Collision: both tablets register a simultaneous stock adjustment with identical timestamp ("2026-11-13T12:00:00.000Z")
+///
+/// Both tablets connect to a local relay server via `SyncDaemon`.
+/// Asserts:
+///   1. Monotonic push and pull cross-exchange drains all pending queues to 0.
+///   2. Zero divergence: final on-hand stock on both tablets converges to exact arithmetic:
+///      100 (initial) - 2 (T1 sale) - 3 (T1 breakage) + 20 (T1 restock)
+///                    - 3 (T2 sale) - 5 (T2 damage)   + 10 (T2 transfer) = 117.
+///   3. Money and row counts:
+///      - Tablet 1 sale: 4,000 minor units ($40.00)
+///      - Tablet 2 sale: 6,000 minor units ($60.00)
+///      - Total store sales revenue across both tablets: exactly 10,000 minor units ($100.00).
+///      - Zero duplicate sale rows or inventory ledger rows on either tablet.
+#[tokio::test]
+async fn two_tablets_sync_convergence_under_hostile_clock_skew_and_equal_timestamps() {
+    let db_tablet1 = setup_db();
+    let db_tablet2 = setup_db();
+
+    // 1. Shared relay server maintaining a central sync log
+    let shared_relay_log = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<
+        kasirmu_core::offline::OfflineQueueItem,
+    >::new()));
+    let listener = tokio::net::TcpListener::bind("localhost:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let push_state = shared_relay_log.clone();
+    async fn handle_push(
+        axum::extract::State(log): axum::extract::State<
+            std::sync::Arc<tokio::sync::Mutex<Vec<kasirmu_core::offline::OfflineQueueItem>>>,
+        >,
+        Json(items): Json<Vec<kasirmu_core::offline::OfflineQueueItem>>,
+    ) -> Json<PushResponse> {
+        let count = items.len();
+        let mut guard = log.lock().await;
+        guard.extend(items);
+        Json(PushResponse {
+            results: vec![PushOutcome::Accepted; count],
+        })
+    }
+
+    let pull_state = shared_relay_log.clone();
+    async fn handle_pull(
+        axum::extract::State(log): axum::extract::State<
+            std::sync::Arc<tokio::sync::Mutex<Vec<kasirmu_core::offline::OfflineQueueItem>>>,
+        >,
+        Json(_req): Json<crate::transport::PullRequest>,
+    ) -> Json<PullResponse> {
+        let guard = log.lock().await;
+        Json(PullResponse {
+            items: guard.clone(),
+            next_cursor: None,
+        })
+    }
+
+    let app = Router::new()
+        .route("/api/sync/push", post(handle_push).with_state(push_state))
+        .route("/api/sync/pull", post(handle_pull).with_state(pull_state));
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    let relay_url = format!("http://localhost:{port}");
+
+    // 2. Seed shared catalogue and initial stock (100 units) on both tablets
+    let seed_tablet = |db: &DbConnection, term_id: &str, url: &str| {
+        let conn = db.blocking_lock();
+        let store = Store::new(&conn);
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, url).unwrap();
+        Settings::set_sync_terminal_id(&conn, term_id).unwrap();
+
+        // Seed product
+        store
+            .create_product(
+                "SKU-MATCHA",
+                "Organic Uji Matcha 100g",
+                kasirmu_core::Money {
+                    minor_units: 2000,
+                    currency: "USD".parse().unwrap(),
+                },
+                None,
+                None,
+                100,
+                Some("retail"),
+            )
+            .unwrap();
+    };
+
+    let url_c1 = relay_url.clone();
+    let db1 = db_tablet1.clone();
+    tokio::task::spawn_blocking(move || seed_tablet(&db1, "tablet-1", &url_c1))
+        .await
+        .unwrap();
+
+    let url_c2 = relay_url.clone();
+    let db2 = db_tablet2.clone();
+    tokio::task::spawn_blocking(move || seed_tablet(&db2, "tablet-2", &url_c2))
+        .await
+        .unwrap();
+
+    // 3. Tablet 1 records offline activity with a clock skewed 14 days in the PAST
+    let db1_ops = db_tablet1.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db1_ops.blocking_lock();
+        let store = Store::new(&conn);
+
+        // Record a sale locally: 2 units matcha = $40.00 (4,000 minor units)
+        conn.execute(
+            "INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method,
+                                tendered_minor, discount_percent, discount_label, user_id,
+                                created_at, updated_at, subtotal_minor, tax_total_minor,
+                                terminal_id, tenant_id, version)
+             VALUES ('sale-tab1-past', 4000, 'USD', 1, 'completed', 'cash', 4000, 0, NULL,
+                     'staff-1', '2026-10-30T08:15:00.000Z', '2026-10-30T08:15:00.000Z', 4000, 0,
+                     'tablet-1', 'default', 1)",
+            [],
+        )
+        .unwrap();
+
+        // Enqueue offline complete_sale item with past timestamp and tablet-1 origin
+        let mut item_sale = kasirmu_core::offline::OfflineQueueItem::new(
+            "complete_sale",
+            r#"{"sale_id":"sale-tab1-past","line_items":[{"sku":"SKU-MATCHA","qty":2}]}"#,
+        );
+        item_sale.created_at = "2026-10-30T08:15:00.000Z".to_string();
+        item_sale.origin_terminal_id = Some("tablet-1".to_string());
+        store.enqueue_offline_preserving_item(&item_sale).unwrap();
+        // Apply sale deduction locally (100 - 2 = 98)
+        let loc = kasirmu_core::inventory::LocationId::default();
+        let tx = conn.unchecked_transaction().unwrap();
+        store
+            .adjust_stock_at_location_with_reason(
+                &tx,
+                "SKU-MATCHA",
+                -2,
+                &loc,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        tx.commit().unwrap();
+
+        // Enqueue stock adjustment (breakage -3 units) with past timestamp
+        let mut item_adj = kasirmu_core::offline::OfflineQueueItem::new(
+            "stock.adjusted",
+            r#"{"sku":"SKU-MATCHA","delta":-3}"#,
+        );
+        item_adj.created_at = "2026-10-30T08:30:00.000Z".to_string();
+        item_adj.origin_terminal_id = Some("tablet-1".to_string());
+        store.enqueue_offline_preserving_item(&item_adj).unwrap();
+        // Apply adjustment locally (98 - 3 = 95)
+        let tx = conn.unchecked_transaction().unwrap();
+        store
+            .adjust_stock_at_location_with_reason(
+                &tx,
+                "SKU-MATCHA",
+                -3,
+                &loc,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        tx.commit().unwrap();
+
+        // Enqueue simultaneous restock (+20 units) at collision timestamp
+        let mut item_restock = kasirmu_core::offline::OfflineQueueItem::new(
+            "stock.adjusted",
+            r#"{"sku":"SKU-MATCHA","delta":20}"#,
+        );
+        item_restock.created_at = "2026-11-13T12:00:00.000Z".to_string();
+        item_restock.origin_terminal_id = Some("tablet-1".to_string());
+        store
+            .enqueue_offline_preserving_item(&item_restock)
+            .unwrap();
+        // Apply locally (95 + 20 = 115)
+        let tx = conn.unchecked_transaction().unwrap();
+        store
+            .adjust_stock_at_location_with_reason(
+                &tx,
+                "SKU-MATCHA",
+                20,
+                &loc,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        tx.commit().unwrap();
+    })
+    .await
+    .unwrap();
+
+    // 4. Tablet 2 records offline activity with a clock skewed 14 days in the FUTURE
+    let db2_ops = db_tablet2.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db2_ops.blocking_lock();
+        let store = Store::new(&conn);
+
+        // Record a sale locally: 3 units matcha = $60.00 (6,000 minor units)
+        conn.execute(
+            "INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method,
+                                tendered_minor, discount_percent, discount_label, user_id,
+                                created_at, updated_at, subtotal_minor, tax_total_minor,
+                                terminal_id, tenant_id, version)
+             VALUES ('sale-tab2-future', 6000, 'USD', 1, 'completed', 'card', 6000, 0, NULL,
+                     'staff-2', '2026-11-27T16:45:00.000Z', '2026-11-27T16:45:00.000Z', 6000, 0,
+                     'tablet-2', 'default', 1)",
+            [],
+        )
+        .unwrap();
+
+        // Enqueue offline complete_sale item with future timestamp and tablet-2 origin
+        let mut item_sale = kasirmu_core::offline::OfflineQueueItem::new(
+            "complete_sale",
+            r#"{"sale_id":"sale-tab2-future","line_items":[{"sku":"SKU-MATCHA","qty":3}]}"#,
+        );
+        item_sale.created_at = "2026-11-27T16:45:00.000Z".to_string();
+        item_sale.origin_terminal_id = Some("tablet-2".to_string());
+        store.enqueue_offline_preserving_item(&item_sale).unwrap();
+        // Apply sale deduction locally (100 - 3 = 97)
+        let loc = kasirmu_core::inventory::LocationId::default();
+        let tx = conn.unchecked_transaction().unwrap();
+        store
+            .adjust_stock_at_location_with_reason(
+                &tx,
+                "SKU-MATCHA",
+                -3,
+                &loc,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        tx.commit().unwrap();
+
+        // Enqueue stock adjustment (damaged -5 units) with future timestamp
+        let mut item_adj = kasirmu_core::offline::OfflineQueueItem::new(
+            "stock.adjusted",
+            r#"{"sku":"SKU-MATCHA","delta":-5}"#,
+        );
+        item_adj.created_at = "2026-11-27T17:00:00.000Z".to_string();
+        item_adj.origin_terminal_id = Some("tablet-2".to_string());
+        store.enqueue_offline_preserving_item(&item_adj).unwrap();
+        // Apply adjustment locally (97 - 5 = 92)
+        let tx = conn.unchecked_transaction().unwrap();
+        store
+            .adjust_stock_at_location_with_reason(
+                &tx,
+                "SKU-MATCHA",
+                -5,
+                &loc,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        tx.commit().unwrap();
+
+        // Enqueue simultaneous transfer-in (+10 units) at collision timestamp
+        let mut item_transfer = kasirmu_core::offline::OfflineQueueItem::new(
+            "stock.adjusted",
+            r#"{"sku":"SKU-MATCHA","delta":10}"#,
+        );
+        item_transfer.created_at = "2026-11-13T12:00:00.000Z".to_string();
+        item_transfer.origin_terminal_id = Some("tablet-2".to_string());
+        store
+            .enqueue_offline_preserving_item(&item_transfer)
+            .unwrap();
+        // Apply locally (92 + 10 = 102)
+        let tx = conn.unchecked_transaction().unwrap();
+        store
+            .adjust_stock_at_location_with_reason(
+                &tx,
+                "SKU-MATCHA",
+                10,
+                &loc,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        tx.commit().unwrap();
+    })
+    .await
+    .unwrap();
+
+    // 5. Run daemons for both tablets to exchange items across relay
+    let daemon1 = SyncDaemon::with_interval(Duration::from_millis(20));
+    assert!(daemon1.start(db_tablet1.clone()).await);
+
+    let daemon2 = SyncDaemon::with_interval(Duration::from_millis(20));
+    assert!(daemon2.start(db_tablet2.clone()).await);
+
+    // Wait until both daemons have pushed all pending items (pending drops to 0)
+    for _ in 0..200 {
+        let s1 = daemon1.status().await;
+        let s2 = daemon2.status().await;
+        if s1.pending_count == 0
+            && s2.pending_count == 0
+            && s1.last_pushed > 0
+            && s2.last_pushed > 0
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    // Give time for pulls to complete and cross-apply
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    assert!(daemon1.stop().await);
+    assert!(daemon2.stop().await);
+    wait_for_stopped(&daemon1).await;
+    wait_for_stopped(&daemon2).await;
+
+    // 6. Assert Zero Divergence and Ledger Equality
+    // On-hand stock calculation:
+    // Initial 100 - 2 (T1 sale) - 3 (T1 breakage) + 20 (T1 restock)
+    //             - 3 (T2 sale) - 5 (T2 damage)   + 10 (T2 transfer) = 117
+    let stock_t1 = tokio::task::spawn_blocking({
+        let db = db_tablet1.clone();
+        move || {
+            let conn = db.blocking_lock();
+            let store = Store::new(&conn);
+            let pid = store.product_id_by_sku("SKU-MATCHA").unwrap().unwrap();
+            store.get_stock(&pid).unwrap()
+        }
+    })
+    .await
+    .unwrap();
+
+    let stock_t2 = tokio::task::spawn_blocking({
+        let db = db_tablet2.clone();
+        move || {
+            let conn = db.blocking_lock();
+            let store = Store::new(&conn);
+            let pid = store.product_id_by_sku("SKU-MATCHA").unwrap().unwrap();
+            store.get_stock(&pid).unwrap()
+        }
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(
+        stock_t1, 117,
+        "Tablet 1 stock must converge to exact arithmetic: 117"
+    );
+    assert_eq!(
+        stock_t2, 117,
+        "Tablet 2 stock must converge to exact arithmetic: 117"
+    );
+    assert_eq!(
+        stock_t1, stock_t2,
+        "Zero stock divergence between tablets under hostile clock skew"
+    );
+
+    // Assert sales money and row counts on both tablets
+    let (t1_sales_count, t1_sales_total) = tokio::task::spawn_blocking({
+        let db = db_tablet1.clone();
+        move || {
+            let conn = db.blocking_lock();
+            let count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM sales", [], |r| r.get(0))
+                .unwrap();
+            let total: i64 = conn
+                .query_row("SELECT COALESCE(SUM(total_minor), 0) FROM sales", [], |r| {
+                    r.get(0)
+                })
+                .unwrap();
+            (count, total)
+        }
+    })
+    .await
+    .unwrap();
+
+    let (t2_sales_count, t2_sales_total) = tokio::task::spawn_blocking({
+        let db = db_tablet2.clone();
+        move || {
+            let conn = db.blocking_lock();
+            let count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM sales", [], |r| r.get(0))
+                .unwrap();
+            let total: i64 = conn
+                .query_row("SELECT COALESCE(SUM(total_minor), 0) FROM sales", [], |r| {
+                    r.get(0)
+                })
+                .unwrap();
+            (count, total)
+        }
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(t1_sales_count, 1, "Tablet 1 has its 1 local sale row");
+    assert_eq!(
+        t1_sales_total, 4000,
+        "Tablet 1 local sales total: 4,000 minor units ($40.00)"
+    );
+
+    assert_eq!(t2_sales_count, 1, "Tablet 2 has its 1 local sale row");
+    assert_eq!(
+        t2_sales_total, 6000,
+        "Tablet 2 local sales total: 6,000 minor units ($60.00)"
+    );
+
+    assert_eq!(
+        t1_sales_total + t2_sales_total,
+        10000,
+        "Total sales revenue across both tablets: exactly 10,000 minor units ($100.00)"
+    );
+}
+
 #[test]
 fn crl_poll_ttl_caching_and_staleness_detection() {
     let now = chrono::Utc::now();

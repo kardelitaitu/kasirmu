@@ -2397,6 +2397,7 @@ async fn set_line_course_assigns_and_clears_with_normalization() {
             cart_id: started.cart_id,
             line_id: added.line_id,
             course: Some("main".into()),
+            coursing_status: None,
         },
     )
     .await
@@ -2410,6 +2411,32 @@ async fn set_line_course_assigns_and_clears_with_normalization() {
             .unwrap()
             .unwrap();
         assert_eq!(cart.lines()[0].course.as_deref(), Some("main"));
+        assert_eq!(cart.lines()[0].coursing_status.as_deref(), Some("hold"));
+    }
+
+    // Explicit coursing status update (e.g. firing the course pre-checkout, ADR-68).
+    set_line_course_scoped(
+        &bridge.ctx(),
+        "tok",
+        SetLineCourseArgs {
+            cart_id: started.cart_id,
+            line_id: added.line_id,
+            course: Some("main".into()),
+            coursing_status: Some("fired".into()),
+        },
+    )
+    .await
+    .unwrap();
+    {
+        let ctx = bridge.ctx();
+        let conn = ctx.db_manager.open_store("s1").unwrap();
+        let db = conn.lock().unwrap();
+        let cart = Store::new(&db)
+            .load_active_cart(&started.cart_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cart.lines()[0].course.as_deref(), Some("main"));
+        assert_eq!(cart.lines()[0].coursing_status.as_deref(), Some("fired"));
     }
 
     // Legacy "drinks" normalizes to "beverage" on the same path.
@@ -2420,6 +2447,7 @@ async fn set_line_course_assigns_and_clears_with_normalization() {
             cart_id: started.cart_id,
             line_id: added.line_id,
             course: Some("drinks".into()),
+            coursing_status: None,
         },
     )
     .await
@@ -2435,7 +2463,7 @@ async fn set_line_course_assigns_and_clears_with_normalization() {
         assert_eq!(cart.lines()[0].course.as_deref(), Some("beverage"));
     }
 
-    // Empty clears the assignment.
+    // Empty clears the assignment and drops coursing status.
     set_line_course_scoped(
         &bridge.ctx(),
         "tok",
@@ -2443,6 +2471,7 @@ async fn set_line_course_assigns_and_clears_with_normalization() {
             cart_id: started.cart_id,
             line_id: added.line_id,
             course: Some("".into()),
+            coursing_status: None,
         },
     )
     .await
@@ -2456,6 +2485,7 @@ async fn set_line_course_assigns_and_clears_with_normalization() {
             .unwrap()
             .unwrap();
         assert_eq!(cart.lines()[0].course, None);
+        assert_eq!(cart.lines()[0].coursing_status, None);
     }
 }
 
@@ -2498,6 +2528,7 @@ async fn set_line_course_rejects_unknown_cart_and_line() {
             cart_id: CartId::new(),
             line_id: added.line_id,
             course: Some("main".into()),
+            coursing_status: None,
         },
     )
     .await;
@@ -2510,6 +2541,7 @@ async fn set_line_course_rejects_unknown_cart_and_line() {
             cart_id: started.cart_id,
             line_id: LineId::new(),
             course: Some("main".into()),
+            coursing_status: None,
         },
     )
     .await;
@@ -2528,6 +2560,7 @@ async fn set_line_course_and_publish_course_fired_reject_invalid_token() {
             cart_id: CartId::new(),
             line_id: LineId::new(),
             course: Some("main".into()),
+            coursing_status: None,
         },
     )
     .await;

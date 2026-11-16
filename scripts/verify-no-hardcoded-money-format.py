@@ -102,12 +102,23 @@ SELF-TEST
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 
 # Directories holding the production Rust this gate polices, RELATIVE TO THE REPO ROOT.
 # They are names of data locations, not of script locations: ROOTS is joined to whatever
@@ -255,6 +266,9 @@ def resolve_source_root(roots: list[str]) -> tuple[Path, str]:
     return Path.cwd().resolve(), "no candidate contained any policed root"
 
 
+ROOT = resolve_source_root(ROOTS)[0]
+
+
 def scan_file(path: Path) -> list[dict]:
     """Return finding dicts for hardcoded exp-2 patterns outside test contexts."""
     findings: list[dict] = []
@@ -392,7 +406,7 @@ def self_test() -> int:
     reddens when that mutation lands; a case with no such pair is not kept.
     """
     caught = clean = red = 0
-    tmp = Path(tempfile.mkdtemp(prefix="money-format-selftest-"))
+    tmp = Path(tempfile.mkdtemp(prefix="money-format-selftest-", dir=fixture_root()))
 
     def verdict(ok: bool, desc: str, expected: str, seen: str) -> None:
         nonlocal caught, red
@@ -489,10 +503,92 @@ def self_test() -> int:
     )
     if red:
         print("  a case slipped through: the behaviour it pins is no longer pinned")
-    return rc_out
+        return 1
+    return shell_ladder()
 
 
-def main() -> int:
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository."""
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+
+    def _run(dirs: dict[str, int], plant: str | None = None, argv=None) -> tuple[int, str]:
+        with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+            fixture_base = Path(td).resolve()
+            _build_tree(fixture_base, dirs, plant=plant)
+            out, err = _io.StringIO(), _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                    rc = main(argv=[] if argv is None else argv, root=fixture_base)
+            except SystemExit as se:
+                return se.code, out.getvalue() + err.getvalue()
+            return rc, out.getvalue() + err.getvalue()
+
+    rungs = 0
+
+    # rung 1 -- the KILLING rung: planted finding must fail rc 1 naming the pattern
+    rungs += 1
+    rc, text = _run({r: 1 for r in ROOTS}, plant="crates")
+    if rc != 1 or "minor_units / 100" not in text:
+        print(f"  x rung 1: planted finding must fail rc 1 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 2 -- clean tree with all 5 roots passes clean with rc 0
+    rungs += 1
+    rc, text = _run({r: 1 for r in ROOTS})
+    if rc != 0 or "PASS" not in text:
+        print(f"  x rung 2: clean tree must pass rc 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 3 -- all roots present but 0 .rs files refuses with rc 2
+    rungs += 1
+    rc, text = _run({r: 0 for r in ROOTS})
+    if rc != 2 or "REFUSED" not in text or "walked none of the tree" not in text:
+        print(f"  x rung 3: empty tree must refuse rc 2 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 4 -- partial coverage (only 2 of 5 roots) refuses with rc 2
+    rungs += 1
+    rc, text = _run({"crates": 1, "foundation": 1})
+    if rc != 2 or "REFUSED" not in text or "walked only part" not in text:
+        print(f"  x rung 4: partial coverage must refuse rc 2 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 5 -- explicit --roots passes on partial tree with rc 0
+    rungs += 1
+    rc, text = _run({"crates": 1}, argv=["--roots", "crates"])
+    if rc != 0 or "PASS" not in text:
+        print(f"  x rung 5: explicit --roots must pass rc 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 6 -- nested --self-test passes through argv under re-entry guard
+    rungs += 1
+    rc, text = _run({r: 1 for r in ROOTS}, argv=["--self-test"])
+    if rc != 0 or "tally:" not in text:
+        print(f"  x rung 6: nested --self-test must exit 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    print(f"LADDER OK ({rungs} rungs: planted-finding-kill, clean-pass, empty-refusal, partial-refusal, explicit-roots, nested-selftest)")
+    return 0
+
+
+def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -519,18 +615,19 @@ def main() -> int:
              "CAUGHT+CLEAN tally; exits 0 only if all three behaved. Nothing is written "
              "inside a repository.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.self_test:
         return self_test()
 
     if args.roots:
         roots = list(args.roots)
-        base = Path.cwd().resolve()
         root_source = "the explicit --roots list"
     else:
         roots = list(ROOTS)
-        base, root_source = resolve_source_root(roots)
+        root_source = "resolved repo root"
+
+    base = Path(root).resolve() if root is not None else ROOT
 
     all_findings: list[dict] = []
     scanned = 0

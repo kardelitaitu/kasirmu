@@ -73,8 +73,21 @@ EXIT CODES
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 
 # Drift reports carry row labels, kind tokens and regeneration commands. On a
 # Windows console defaulting to cp1252, a single non-encodable character in
@@ -107,8 +120,8 @@ def _res(rel: Path, root) -> Path:
     """
     if rel.is_absolute():
         return rel
-    base = Path.cwd() if root is None else Path(root).resolve()
-    return base / rel
+    resolved_root = ROOT if root is None else Path(root).resolve()
+    return resolved_root / rel
 
 
 def check_contract_copies(root=None) -> tuple[int, bool]:
@@ -293,7 +306,9 @@ def main(argv=None, root=None) -> int:
     """r203: argv and root parameterized, the r166..r202 contract -- the
     vendored copy, the UI canonical, the ui/ tree question and the corpus
     all resolve under the contract root together."""
-    base = Path.cwd() if root is None else Path(root).resolve()
+    if argv is not None and "--self-test" in argv:
+        return self_test()
+    base = ROOT if root is None else Path(root).resolve()
     copies, copies_skipped = check_contract_copies(base)
     ui = _res(globals()["UI"], base)
     vendored = _res(globals()["VENDORED"], base)
@@ -510,34 +525,55 @@ def self_test() -> int:
     finally:
         MATRIX = real_matrix
 
-    # r203: the shell -- main() graded through argv and a contract root, the
-    # r166..r202 pattern. The fixture is a full four-path tree (vendored
-    # contract, UI canonical, ui/ tree, matrix) under ONE tempdir root; a
-    # root-dropping main resolves the module's relative paths against the
-    # CWD and grades the real checkout instead.
-    shell = 0
-    import tempfile as _tempfile2
-    def build_tree(vendored_text, ui_text, matrix_text, ui_exists=True, ui_root=True):
-        t3 = Path(_tempfile2.mkdtemp())
-        vpath = t3 / "crates" / "kasirmu-core" / "src"
-        vpath.mkdir(parents=True)
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (23 pure cases)")
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell through argv and a contract root."""
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+
+    def build_tree(td_path: Path, vendored_text, ui_text, matrix_text, ui_exists=True, ui_root=True):
+        vpath = td_path / "crates" / "kasirmu-core" / "src"
+        vpath.mkdir(parents=True, exist_ok=True)
         (vpath / "topologySemantics.json").write_text(vendored_text, encoding="utf-8")
         if ui_root:
-            upath = t3 / "ui" / "src" / "features" / "locations"
-            upath.mkdir(parents=True)
+            upath = td_path / "ui" / "src" / "features" / "locations"
+            upath.mkdir(parents=True, exist_ok=True)
             if ui_exists:
                 (upath / "topologySemantics.json").write_text(ui_text, encoding="utf-8")
         if matrix_text is not None:
             (vpath / "topologySemantics.matrix.json").write_text(matrix_text, encoding="utf-8")
-        return t3
-    def run3(root):
-        out, err = io.StringIO(), io.StringIO()
+
+    def run_ladder(root_path: Path, argv=None):
+        out, err = _io.StringIO(), _io.StringIO()
         try:
-            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                rc = main(argv=[], root=root)
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=[] if argv is None else argv, root=root_path)
         except SystemExit as se:
             return se.code, out.getvalue() + err.getvalue()
         return rc, out.getvalue() + err.getvalue()
+
     contract_min = {
         "schemaVersion": 2,
         "semanticPairings": [{"source": "store", "target": "product",
@@ -552,59 +588,84 @@ def self_test() -> int:
         "rows": [{"source": "store", "target": "product",
                   "relationshipType": "sells", "verdicts": dict(grid)}],
     })
-    shell += 1
-    td3 = build_tree(ctext, ctext, good_matrix)
-    rc, text = run3(td3)
-    if rc != 0 or "byte-identical" not in text or "corpus covers 1 pairings" not in text:
-        print("  x a parity-clean tree must pass both phases (rc=%r text=%r)"
-              % (rc, text[-100:]), file=sys.stderr)
-        return 1
-    shell += 1
-    td3 = build_tree(ctext, ctext.replace("2", "3"), good_matrix)
-    rc, text = run3(td3)
-    if rc != 1 or "DRIFT" not in text:
-        print("  x differing contract copies must fail rc 1 (rc=%r text=%r)"
-              % (rc, text[-90:]), file=sys.stderr)
-        return 1
-    shell += 1
-    td3 = build_tree(ctext, ctext, good_matrix, ui_exists=False)
-    rc, text = run3(td3)
-    if rc != 1 or "compared NOTHING" not in text:
-        print("  x a ui tree with no contract must fail rc 1 (rc=%r text=%r)"
-              % (rc, text[-90:]), file=sys.stderr)
-        return 1
-    shell += 1
-    td3 = build_tree(ctext, ctext, good_matrix, ui_root=False)
-    rc, text = run3(td3)
-    if rc != 0 or "NOT FULLY VERIFIED" not in text:
-        print("  x a server-only checkout must skip declaredly (rc=%r text=%r)"
-              % (rc, text[-90:]), file=sys.stderr)
-        return 1
-    shell += 1
-    td3 = build_tree(ctext, ctext, None)
-    rc, text = run3(td3)
-    if rc != 1 or "missing corpus" not in text:
-        print("  x a missing corpus must fail rc 1 (rc=%r text=%r)"
-              % (rc, text[-90:]), file=sys.stderr)
-        return 1
-    shell += 1
-    stale = json.loads(good_matrix); stale["contractSchemaVersion"] = 1
-    td3 = build_tree(ctext, ctext, json.dumps(stale))
-    rc, text = run3(td3)
-    if rc != 1 or "the corpus is stale" not in text:
-        print("  x a stale corpus schemaVersion must fail rc 1 (rc=%r text=%r)"
-              % (rc, text[-90:]), file=sys.stderr)
-        return 1
 
-    if bad:
-        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
-        return 2
-    print("SELF-TEST OK (23 pure cases + %d shell cases through argv and root)"
-          % shell)
+    rungs = 0
+
+    # rung 1 -- the KILLING rung: differing contract copies must fail rc 1 with DRIFT
+    rungs += 1
+    with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+        t_base = Path(td).resolve()
+        build_tree(t_base, ctext, ctext.replace("2", "3"), good_matrix)
+        rc, text = run_ladder(t_base)
+        if rc != 1 or "DRIFT" not in text:
+            print(f"  x rung 1: differing contract copies must fail rc 1 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+            return 1
+
+    # rung 2 -- parity-clean tree passes both phases with rc 0
+    rungs += 1
+    with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+        t_base = Path(td).resolve()
+        build_tree(t_base, ctext, ctext, good_matrix)
+        rc, text = run_ladder(t_base)
+        if rc != 0 or "byte-identical" not in text or "corpus covers 1 pairings" not in text:
+            print(f"  x rung 2: parity-clean tree must pass both phases (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+            return 1
+
+    # rung 3 -- ui tree with missing contract must fail rc 1
+    rungs += 1
+    with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+        t_base = Path(td).resolve()
+        build_tree(t_base, ctext, ctext, good_matrix, ui_exists=False)
+        rc, text = run_ladder(t_base)
+        if rc != 1 or "compared NOTHING" not in text:
+            print(f"  x rung 3: a ui tree with no contract must fail rc 1 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+            return 1
+
+    # rung 4 -- server-only checkout skips declaredly with rc 0 and NOT FULLY VERIFIED
+    rungs += 1
+    with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+        t_base = Path(td).resolve()
+        build_tree(t_base, ctext, ctext, good_matrix, ui_root=False)
+        rc, text = run_ladder(t_base)
+        if rc != 0 or "NOT FULLY VERIFIED" not in text:
+            print(f"  x rung 4: a server-only checkout must skip declaredly (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+            return 1
+
+    # rung 5 -- missing corpus must fail rc 1
+    rungs += 1
+    with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+        t_base = Path(td).resolve()
+        build_tree(t_base, ctext, ctext, None)
+        rc, text = run_ladder(t_base)
+        if rc != 1 or "missing corpus" not in text:
+            print(f"  x rung 5: a missing corpus must fail rc 1 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+            return 1
+
+    # rung 6 -- stale corpus schemaVersion must fail rc 1
+    rungs += 1
+    with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+        t_base = Path(td).resolve()
+        stale = json.loads(good_matrix)
+        stale["contractSchemaVersion"] = 1
+        build_tree(t_base, ctext, ctext, json.dumps(stale))
+        rc, text = run_ladder(t_base)
+        if rc != 1 or "the corpus is stale" not in text:
+            print(f"  x rung 6: a stale corpus schemaVersion must fail rc 1 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+            return 1
+
+    # rung 7 -- nested --self-test passes rc 0 through argv under re-entry guard
+    rungs += 1
+    with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+        t_base = Path(td).resolve()
+        build_tree(t_base, ctext, ctext, good_matrix)
+        rc, text = run_ladder(t_base, argv=["--self-test"])
+        if rc != 0 or "SELF-TEST OK" not in text:
+            print(f"  x rung 7: nested --self-test must exit 0 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+            return 1
+
+    print(f"LADDER OK ({rungs} rungs: contract-drift-kill, parity-clean, missing-ui-contract, server-only-skip, missing-corpus, stale-corpus, nested-selftest)")
     return 0
 
 
 if __name__ == "__main__":
-    if "--self-test" in sys.argv:
-        sys.exit(self_test())
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

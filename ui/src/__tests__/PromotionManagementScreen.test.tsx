@@ -143,13 +143,23 @@ describe('PromotionManagementScreen', () => {
     });
   });
 
-  it('shows fixed amount value without percent sign', async () => {
+  it('shows fixed amount value formatted as currency', async () => {
     mockListPromotions.mockResolvedValue([makePromo({ promo_type: 'fixed_amount', value_minor: 5000 })]);
     renderScreen();
 
     await waitFor(() => {
       expect(screen.getByText('Fixed Amount')).toBeTruthy();
-      expect(screen.getByText('5000')).toBeTruthy();
+      expect(screen.getByText('Rp 5,000')).toBeTruthy();
+    });
+  });
+
+  it('shows buy_x_get_y reward discount as percentage', async () => {
+    mockListPromotions.mockResolvedValue([makePromo({ promo_type: 'buy_x_get_y', value_minor: 100 })]);
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText('Buy X Get Y')).toBeTruthy();
+      expect(screen.getByText('100%')).toBeTruthy();
     });
   });
 
@@ -195,11 +205,48 @@ describe('PromotionManagementScreen', () => {
     await user.click(screen.getByText('Add Promotion'));
 
     const valueInput = await screen.findByLabelText('Value') as HTMLInputElement;
+    await user.clear(valueInput);
     await user.type(valueInput, '12.5');
 
     // Fractional keystrokes are ignored — the field must not silently
     // truncate 12.5 to 12 via parseInt.
     expect(valueInput.value).toBe('12');
+  });
+
+  it('disables Save when value is invalid (0 or > 100 for percentage)', async () => {
+    mockListPromotions.mockResolvedValue([]);
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText('No promotions yet.')).toBeTruthy();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText('Add Promotion'));
+
+    const nameInput = (await screen.findByLabelText('Name')) as HTMLInputElement;
+    await user.type(nameInput, 'Test Promo');
+
+    const valueInput = (await screen.findByLabelText('Value')) as HTMLInputElement;
+    const saveBtn = screen.getByText('Save').closest('button')!;
+
+    // Starts enabled because default value is 10
+    expect(saveBtn).not.toBeDisabled();
+
+    // 0 is invalid for percentage (1..=100 required)
+    await user.clear(valueInput);
+    await user.type(valueInput, '0');
+    expect(saveBtn).toBeDisabled();
+
+    // > 100 is invalid for percentage
+    await user.clear(valueInput);
+    await user.type(valueInput, '150');
+    expect(saveBtn).toBeDisabled();
+
+    // 25 is valid
+    await user.clear(valueInput);
+    await user.type(valueInput, '25');
+    expect(saveBtn).not.toBeDisabled();
   });
 
   it('closes the add modal with Cancel', async () => {

@@ -147,10 +147,22 @@ from __future__ import annotations
 import contextlib
 import io
 import re
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 
 if hasattr(sys.stdout, "buffer"):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")  # type: ignore[attr-defined]
@@ -191,6 +203,7 @@ def resolve_root(start: Path | None = None) -> tuple[Path, str]:
 
 
 DEFAULT_ROOT, ROOT_SOURCE = resolve_root()
+ROOT = DEFAULT_ROOT
 
 # ONE mirror, and the list is expected to shrink when a mirror is retired rather than
 # kept for company. `.agents/management/AGENTS.md` was deleted on 2026-09-24 by
@@ -3074,10 +3087,152 @@ def _self_test_cases() -> int:
         bad += 1
 
     print(f"\n  {'self-test: all mutations caught' if not bad else f'{bad} gap(s)'}")
-    return 1 if bad else 0
+    if bad:
+        return 1
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r299: main()'s shell -- argv= and root= graded against throwaway fixture repos."""
+    import contextlib
+    import io as _io
+
+    def _shell(setup_fn=None, argv=None):
+        td = tempfile.mkdtemp(dir=fixture_root())
+        try:
+            tmp = Path(td)
+            make_fixture(DEFAULT_ROOT, tmp)
+            if setup_fn is not None:
+                setup_fn(tmp)
+            buf_out, buf_err = _io.StringIO(), _io.StringIO()
+            with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+                try:
+                    rc = main(argv=[] if argv is None else argv, root=tmp)
+                except SystemExit as se:
+                    if isinstance(se.code, int):
+                        rc = se.code
+                    else:
+                        rc = 1
+                        buf_err.write(str(se.code))
+            out = buf_out.getvalue() + buf_err.getvalue()
+            return rc, out
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+
+    rungs = []
+
+    # 1. Killing rung: planted gate count off-by-one in AGENTS.md fails rc 1.
+    #    Under mutant (base = ROOT), it reads the real repo AGENTS.md (0 problems, rc 0)
+    #    and fails this check.
+    def plant_gate_count(tmp: Path):
+        agents = (tmp / "AGENTS.md").read_text(encoding="utf-8")
+        mutated = _set_first_step_count(agents, 6)
+        (tmp / "AGENTS.md").write_text(mutated, encoding="utf-8")
+
+    rc1, out1 = _shell(setup_fn=plant_gate_count)
+    rungs.append((
+        "rung 1 (killing): gate count drift fails rc 1",
+        rc1 == 1 and "claims 6 pre-commit steps" in out1,
+        f"rc={rc1} text={out1!r}",
+    ))
+
+    # 2. Clean fixture tree passes with exit 0.
+    rc2, out2 = _shell()
+    rungs.append((
+        "clean fixture passes rc 0",
+        rc2 == 0 and "every policed mirror (1) agrees with the repo" in out2,
+        f"rc={rc2} text={out2!r}",
+    ))
+
+    # 3. Missing .githooks/pre-commit fails rc 1.
+    def drop_pre_commit(tmp: Path):
+        (tmp / ".githooks" / "pre-commit").unlink()
+
+    rc3, out3 = _shell(setup_fn=drop_pre_commit)
+    rungs.append((
+        "missing pre-commit hook fails rc 1",
+        rc3 == 1 and "1 of 4 policed paths missing [.githooks/pre-commit]" in out3,
+        f"rc={rc3} text={out3!r}",
+    ))
+
+    # 4. Stale skill claim fails rc 1.
+    def plant_skill_drift(tmp: Path):
+        skill_rel = tmp / ".agents" / "skills" / "hal-drivers" / "SKILL.md"
+        if skill_rel.is_file():
+            base_skill = skill_rel.read_text(encoding="utf-8")
+            stale = "\n## Probe\n\n- The .githooks/pre-commit hook runs six steps before every commit.\n"
+            skill_rel.write_text(base_skill + stale, encoding="utf-8")
+
+    rc4, out4 = _shell(setup_fn=plant_skill_drift)
+    rungs.append((
+        "stale skill claim fails rc 1",
+        rc4 == 1 and "pre-commit steps" in out4,
+        f"rc={rc4} text={out4!r}",
+    ))
+
+    # 5. Missing Cargo.toml refuses with exit code != 0.
+    def drop_cargo(tmp: Path):
+        (tmp / "Cargo.toml").unlink()
+
+    rc5, out5 = _shell(setup_fn=drop_cargo)
+    rungs.append((
+        "missing Cargo.toml refuses",
+        rc5 != 0 and "cannot determine the current version from Cargo.toml" in out5,
+        f"rc={rc5} text={out5!r}",
+    ))
+
+    # 6. Nested --self-test passes rc 0 through argv under re-entry guard.
+    buf_out6, buf_err6 = _io.StringIO(), _io.StringIO()
+    with contextlib.redirect_stdout(buf_out6), contextlib.redirect_stderr(buf_err6):
+        try:
+            rc6 = main(argv=["--self-test"])
+        except SystemExit as se:
+            rc6 = se.code if isinstance(se.code, int) else 1
+    out6 = buf_out6.getvalue() + buf_err6.getvalue()
+    rungs.append((
+        "nested self-test exits 0",
+        rc6 == 0 and "self-test: all mutations caught" in out6,
+        f"rc={rc6} text={out6!r}",
+    ))
+
+    fails = 0
+    print("shell_ladder:")
+    for name, ok, detail in rungs:
+        status = "ok  " if ok else "FAIL"
+        print(f"  {status}  {name}")
+        if not ok:
+            print(f"        {detail}")
+            fails += 1
+    print(f"ladder: {'PASS' if fails == 0 else f'FAIL ({fails})'}")
+    return 0 if fails == 0 else 1
+
+
+def main(argv: list[str] | None = None, root: Path | None = None) -> int:
+    args = argv if argv is not None else sys.argv[1:]
+    if "--self-test" in args:
+        return self_test()
+
+    base = ROOT if root is None else Path(root).resolve()
+    positional = [a for a in args if not a.startswith("-")]
+    if positional and root is None:
+        base = Path(positional[0]).resolve()
+    return report(base)
 
 
 if __name__ == "__main__":
-    if "--self-test" in sys.argv[1:]:
-        sys.exit(self_test())
-    sys.exit(report(Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else DEFAULT_ROOT))
+    sys.exit(main())

@@ -150,10 +150,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import tempfile
 from pathlib import Path
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
+
 
 REPO = Path(__file__).resolve().parent.parent
 UI_SRC = REPO / "ui" / "src"
@@ -924,6 +936,132 @@ def self_test() -> int:
     if bad:
         sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
         return 2
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository."""
+    import contextlib
+    import io as _io
+
+    def _setup_tree(root: Path, hole: bool = False, stale: bool = False, no_tests: bool = False, no_locales: bool = False):
+        if not no_locales:
+            loc = root / "shared-ui" / "locales"
+            loc.mkdir(parents=True, exist_ok=True)
+            (loc / "demo.ftl").write_text("demo-one = One\ndemo-two = Two\n", encoding="utf-8")
+
+        if not no_tests:
+            src = root / "ui" / "src"
+            (src / "features" / "demo").mkdir(parents=True, exist_ok=True)
+            screen_content = (
+                "export default function S({ l10n }: any) { return l10n.getString('demo-one') + l10n.getString('demo-two'); }"
+                if hole else
+                "export default function S({ l10n }: any) { return l10n.getString('demo-one'); }"
+            )
+            (src / "features" / "demo" / "DemoScreen.tsx").write_text(screen_content, encoding="utf-8")
+            (src / "demo.test.tsx").write_text(
+                "import Component from './features/demo/DemoScreen';\n"
+                "expect(screen.getByText('One')).not.toBeNull();\n"
+                "vi.mock('@fluent/react', () => ({\n"
+                "  useLocalization: () => ({ l10n: {\n"
+                "    getString: (id: string) => {\n"
+                "      const map = {\n"
+                "        'demo-one': 'One',\n"
+                "        'other-a': 'A',\n"
+                "        'other-b': 'B',\n"
+                "      };\n"
+                "      return (map as Record<string, string>)[id] || id;\n"
+                "    }\n"
+                "  } })\n"
+                "}));\n",
+                encoding="utf-8",
+            )
+        else:
+            (root / "ui" / "src").mkdir(parents=True, exist_ok=True)
+
+        scr = root / "scripts"
+        scr.mkdir(parents=True, exist_ok=True)
+        entries = [{"at": "ui/src/demo.test.tsx:7", "key": "demo-stale", "used_by": "DemoScreen.tsx"}] if stale else []
+        (scr / "l10n-map-baseline.json").write_text(json.dumps({"description": "t", "total": len(entries), "entries": entries}), encoding="utf-8")
+
+    def _shell_run(argv=None, hole=False, stale=False, no_tests=False, no_locales=False) -> tuple[int, str]:
+        with tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+            fixture_root_dir = Path(td).resolve()
+            _setup_tree(fixture_root_dir, hole=hole, stale=stale, no_tests=no_tests, no_locales=no_locales)
+            out, err = _io.StringIO(), _io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                try:
+                    rc = main(argv=[] if argv is None else argv, root=fixture_root_dir)
+                except SystemExit as se:
+                    if isinstance(se.code, str):
+                        err_text = se.code
+                        rc = 2 if "SCAN BROKE" in se.code else 1
+                    else:
+                        err_text = ""
+                        rc = se.code if isinstance(se.code, int) else 1
+                    return rc, out.getvalue() + err.getvalue() + ("\n" + err_text if err_text else "")
+            return rc, out.getvalue() + err.getvalue()
+
+    rungs = 0
+
+    # rung 1 -- the KILLING rung: unbaselined map hole fails rc 1
+    rungs += 1
+    rc, text = _shell_run(hole=True)
+    if rc != 1 or "A HAND-MAINTAINED l10n MAP GAINED A HOLE:" not in text or "demo-two" not in text:
+        print(f"  x rung 1: unbaselined hole must fail rc 1 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 2 -- clean fixture passes with rc 0
+    rungs += 1
+    rc, text = _shell_run()
+    if rc != 0 or "OK: no new l10n map holes" not in text:
+        print(f"  x rung 2: clean fixture must pass rc 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 3 -- stale baseline entry fails rc 1
+    rungs += 1
+    rc, text = _shell_run(stale=True)
+    if rc != 1 or "BASELINE IS STALE" not in text:
+        print(f"  x rung 3: stale baseline entry must fail rc 1 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 4 -- empty test suite refuses with exit 2
+    rungs += 1
+    rc, text = _shell_run(no_tests=True)
+    if rc != 2 or "SCAN READ NOTHING" not in text:
+        print(f"  x rung 4: empty test suite must refuse rc 2 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 5 -- missing locales directory refuses with exit 2
+    rungs += 1
+    rc, text = _shell_run(no_locales=True)
+    if rc != 2 or "SCAN BROKE" not in text:
+        print(f"  x rung 5: missing locales must refuse rc 2 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 6 -- nested --self-test passes through argv under re-entry guard
+    rungs += 1
+    rc, text = _shell_run(argv=["--self-test"])
+    if rc != 0 or "SELF-TEST OK" not in text:
+        print(f"  x rung 6: nested --self-test must exit 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    print(f"LADDER OK ({rungs} rungs: hole-kill, clean-pass, stale-baseline, empty-suite-refusal, missing-locales-refusal, nested-selftest)")
     return 0
 
 
@@ -949,7 +1087,8 @@ def _read_baseline() -> list[dict]:
     return doc.get("entries", [])
 
 
-def main() -> int:
+def main(argv: list[str] | None = None, root: Path | None = None) -> int:
+    global REPO, UI_SRC, LOCALES, BASELINE_PATH
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--self-test", action="store_true", help="run this checker's cases and exit")
     ap.add_argument("--write-baseline", action="store_true", help="regenerate the ratchet baseline")
@@ -958,10 +1097,24 @@ def main() -> int:
         action="store_true",
         help="permit --write-baseline to bless NEW holes (must be justified in the commit)",
     )
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
 
+    saved_env = (REPO, UI_SRC, LOCALES, BASELINE_PATH)
+    base = REPO if root is None else Path(root).resolve()
+    try:
+        if root is not None:
+            REPO = base
+            UI_SRC = base / "ui" / "src"
+            LOCALES = base / "shared-ui" / "locales"
+            BASELINE_PATH = base / "scripts" / "l10n-map-baseline.json"
+        return _main_body(args)
+    finally:
+        REPO, UI_SRC, LOCALES, BASELINE_PATH = saved_env
+
+
+def _main_body(args) -> int:
     if not detector_still_fires() or not scan_still_judges():
         print("DETECTOR WENT DEAF: a known-offending synthetic map was not flagged.", file=sys.stderr)
         return 2

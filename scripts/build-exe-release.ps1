@@ -19,6 +19,25 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $WorkspaceRoot = Split-Path -Parent $ScriptDir
 $DesktopClientDir = Join-Path $WorkspaceRoot "apps\desktop-tauri"
 
+# Give this build its own temp directory.
+#
+# Why: `npm run build` runs vite -> esbuild, and esbuild writes transient chunks
+# under %TEMP% and then deletes them. On a host whose %TEMP% carries an ACL the
+# current user cannot fully control, that delete fails and vite reports
+#   [vite:esbuild-transpile] remove C:\Windows\TEMP\esbuild-<hash>: Access is denied
+# which reads like a SOURCE error and is not one: the build is fine, the temp
+# directory is not. Measured 2026-11-13 -- the plain `cargo tauri build
+# --bundles nsis,msi` invocation died exactly there, and the identical command
+# succeeded unchanged once TMP/TEMP/TMPDIR pointed at a repo-owned directory.
+# `scripts/check-ui.mjs` already carries this remedy (target/mstmp) for the same
+# class of failure on the same host, so this keeps the two paths consistent.
+$BuildTemp = Join-Path $WorkspaceRoot "target\mstmp"
+New-Item -ItemType Directory -Force -Path $BuildTemp | Out-Null
+$env:TMP = $BuildTemp
+$env:TEMP = $BuildTemp
+$env:TMPDIR = $BuildTemp
+Write-Host "[INFO] Build temp directory: $BuildTemp" -ForegroundColor Green
+
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host " Building kasir.mu Windows EXE (Release)" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan

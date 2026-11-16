@@ -7,7 +7,7 @@ import {
   adjustStockScoped,
   type ProductDto,
 } from '@/api/products';
-import { formatMoney } from '@/types/domain';
+import { formatMoney, DEFAULT_LOW_STOCK_THRESHOLD } from '@/types/domain';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
@@ -201,7 +201,8 @@ export default function InventoryAdjustmentScreen() {
   const stockStatus = (product: ProductDto): 'ok' | 'low' | 'out' => {
     if (product.stock_qty == null) return 'ok';
     if (product.stock_qty <= 0) return 'out';
-    if (product.stock_qty < 10) return 'low';
+    const threshold = product.low_stock_threshold ?? DEFAULT_LOW_STOCK_THRESHOLD;
+    if (product.stock_qty <= threshold) return 'low';
     return 'ok';
   };
 

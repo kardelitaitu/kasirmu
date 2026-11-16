@@ -373,7 +373,7 @@ export function usePosCartActions({
    * it, the same convention the rest of this file uses.
    */
   const syncLineCourse = useCallback(
-    async (lineId: string, courseId: string) => {
+    async (lineId: string, courseId: string, coursingStatus?: string | null) => {
       if (!cartId) return;
       try {
         await setLineCourseScoped(sessionToken, {
@@ -383,6 +383,7 @@ export function usePosCartActions({
           // chip's None option); the backend's is `None`. Translate here rather
           // than at the call site so the two vocabularies meet in one place.
           course: courseId === '' ? null : courseId,
+          coursingStatus: coursingStatus ?? (courseId === '' ? null : 'hold'),
         });
       } catch (err) {
         devLog.warn('pos-course', `course sync failed for line ${lineId}: ${String(err)}`);

@@ -47,6 +47,8 @@ Usage, from the repo root:
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import os
 import re
 import shutil
@@ -54,6 +56,17 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
+
 
 REPO = Path(__file__).resolve().parent.parent
 PROBE_FILE = REPO / "crates" / "kasirmu-core" / "tests" / "integration" / "query_plan_probe.rs"
@@ -84,10 +97,11 @@ PROBE_ENTRY = re.compile(r"name:\s*\"(?P<name>[^\"]+)\",\s*\n\s*origin:\s*\"(?P<
 OFFENDER_HEADER = re.compile(r"^(?P<name>.+?) \((?P<origin>.+)\)$")
 
 
-def probe_source() -> str:
+def probe_source(path: Path | None = None) -> str:
     """The probe file's text, or an empty string when it is missing."""
+    target = path if path is not None else PROBE_FILE
     try:
-        return PROBE_FILE.read_text(encoding="utf-8")
+        return target.read_text(encoding="utf-8")
     except FileNotFoundError:
         return ""
 
@@ -125,7 +139,7 @@ def build_env() -> dict[str, str]:
     return env
 
 
-def run_probe(extra_args: list[str], label: str) -> tuple[int, str]:
+def run_probe(extra_args: list[str], label: str, repo: Path = REPO) -> tuple[int, str]:
     """Run the probe test and return (exit code, combined output as ASCII)."""
     cmd = [
         "cargo",
@@ -143,7 +157,7 @@ def run_probe(extra_args: list[str], label: str) -> tuple[int, str]:
     print("  " + " ".join(cmd))
     proc = subprocess.run(
         cmd,
-        cwd=REPO,
+        cwd=repo,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -155,7 +169,7 @@ def run_probe(extra_args: list[str], label: str) -> tuple[int, str]:
 
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
-def run_unit_plan_gate(extra_args: list[str], label: str) -> tuple[int, str]:
+def run_unit_plan_gate(extra_args: list[str], label: str, repo: Path = REPO) -> tuple[int, str]:
     """Run the run-time-WHERE plan tests and return (exit code, output as ASCII)."""
     cmd = [
         "cargo",
@@ -173,7 +187,7 @@ def run_unit_plan_gate(extra_args: list[str], label: str) -> tuple[int, str]:
     print("  " + " ".join(cmd))
     proc = subprocess.run(
         cmd,
-        cwd=REPO,
+        cwd=repo,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -451,7 +465,7 @@ def self_test() -> int:
     # finally restores it even on failure.
     real_probe = PROBE_FILE
     try:
-        scratch = Path(tempfile.mkdtemp(prefix="queryplans-probe-"))
+        scratch = Path(tempfile.mkdtemp(prefix="queryplans-probe-", dir=fixture_root()))
         try:
             probe = scratch / "query_plan_probe.rs"
             probe.write_text('const LARGE_TABLES: &[&str] = &["scratch_table"];', encoding="utf-8")
@@ -470,10 +484,102 @@ def self_test() -> int:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
     print("SELF-TEST OK (28 cases, nothing built or run)")
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository."""
+    def _run(argv=None, content: str | None = None) -> tuple[int, str]:
+        with tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+            fixture_base = Path(td).resolve()
+            if content is not None:
+                probe_dir = fixture_base / "crates" / "kasirmu-core" / "tests" / "integration"
+                probe_dir.mkdir(parents=True, exist_ok=True)
+                (probe_dir / "query_plan_probe.rs").write_text(content, encoding="utf-8")
+            out, err = io.StringIO(), io.StringIO()
+            try:
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    rc = main(argv=[] if argv is None else argv, root=fixture_base)
+            except SystemExit as se:
+                return (se.code if isinstance(se.code, int) else 1), out.getvalue() + err.getvalue()
+            return rc, out.getvalue() + err.getvalue()
+
+    rungs = 0
+
+    # rung 1 -- the KILLING rung: planted probe file with --list must reflect the fixture, not REPO
+    rungs += 1
+    plant_content = (
+        'const LARGE_TABLES: &[&str] = &["plant_table"];\n'
+        '    name: "plant_probe",\n'
+        '    origin: "plant.rs:1 (PLANT, CONSTANT)",\n'
+    )
+    rc, text = _run(argv=["--list"], content=plant_content)
+    if rc != 0 or "plant_table" not in text or "plant_probe" not in text:
+        print(f"  x rung 1: planted probe file must be read (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 2 -- missing probe file in fixture root refuses with exit 2
+    rungs += 1
+    rc, text = _run(argv=[], content=None)
+    if rc != 2 or "probe file not found:" not in text:
+        print(f"  x rung 2: missing probe file must refuse rc 2 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 3 -- empty probe file reports 0 probed queries with rc 0
+    rungs += 1
+    rc, text = _run(argv=["--list"], content="// empty probe file\n")
+    if rc != 0 or "0 probed queries" not in text:
+        print(f"  x rung 3: empty probe file must report 0 queries (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 4 -- multi-probe probe file lists probes with kinds
+    rungs += 1
+    multi_content = (
+        'const LARGE_TABLES: &[&str] = &["tbl_a", "tbl_b"];\n'
+        '    name: "q_const",\n'
+        '    origin: "const.rs:1 (CONST, CONSTANT)",\n'
+        '    name: "q_copied",\n'
+        '    origin: "copied.rs:2 (COPIED, copied)",\n'
+    )
+    rc, text = _run(argv=["--list"], content=multi_content)
+    if rc != 0 or "2 probed queries" not in text or "[CONSTANT] q_const" not in text or "[copied] q_copied" not in text:
+        print(f"  x rung 4: multi-probe file must list both queries (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 5 -- unrecognized flag exits 2
+    rungs += 1
+    rc, text = _run(argv=["--no-such-flag"], content=None)
+    if rc != 2 or "unrecognized arguments" not in text:
+        print(f"  x rung 5: unrecognized flag must exit 2 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 6 -- nested --self-test passes through argv under re-entry guard
+    rungs += 1
+    rc, text = _run(argv=["--self-test"], content=None)
+    if rc != 0 or "SELF-TEST OK" not in text:
+        print(f"  x rung 6: nested --self-test must exit 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    print(f"LADDER OK ({rungs} rungs: list-custom-probe-kill, missing-probe-refusal, empty-probe-list, multi-probe-list, invalid-flag, nested-selftest)")
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Run the query-plan regression probe and report unindexed scans.",
     )
@@ -492,14 +598,17 @@ def main() -> int:
         action="store_true",
         help="grade the report formatters on synthetic output and exit. Pure: nothing is built or run.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.self_test:
         return self_test()
 
-    source = probe_source()
+    base = REPO if root is None else Path(root).resolve()
+    probe_path = base / "crates" / "kasirmu-core" / "tests" / "integration" / "query_plan_probe.rs"
+
+    source = probe_source(probe_path)
     if not source:
-        print("check-query-plans: probe file not found: " + str(PROBE_FILE))
+        print("check-query-plans: probe file not found: " + str(probe_path))
         return 2
 
     if args.list:
@@ -508,7 +617,7 @@ def main() -> int:
     # 1. The falsification first when asked: if the detector cannot see a
     #    deliberately scanning query, a green gate below means nothing.
     if args.check:
-        code, output = run_probe([FALSIFICATION_TEST, "--exact"], "falsification gate")
+        code, output = run_probe([FALSIFICATION_TEST, "--exact"], "falsification gate", repo=base)
         if code != 0:
             print("")
             print("FAIL: the probe cannot fail. forcing_a_scan_fails_the_probe did not pass,")
@@ -526,14 +635,14 @@ def main() -> int:
         print("")
 
     # 2. The gate.
-    code, output = run_probe([], "plan gate")
+    code, output = run_probe([], "plan gate", repo=base)
     if code == 0:
         # 2b. The run-time-WHERE tier. The probe above prepares known strings and
         #     is structurally blind to an assembled WHERE clause; those are graded
         #     by unit tests inside the crate. Reporting OK without running them
         #     would leave the newest coverage -- the class O-M69 belonged to --
         #     executing in nobody's CI.
-        unit_code, unit_output = run_unit_plan_gate([], "run-time WHERE gate")
+        unit_code, unit_output = run_unit_plan_gate([], "run-time WHERE gate", repo=base)
         if unit_code != 0:
             print("")
             print("FAIL: the run-time-WHERE plan tests did not pass.")

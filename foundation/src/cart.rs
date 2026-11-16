@@ -75,6 +75,11 @@ pub struct CartLine {
     /// so carts persisted before this field existed still deserialize.
     #[serde(default)]
     pub course: Option<String>,
+    /// Restaurant coursing status (e.g. "hold", "fired"). (ADR-68)
+    /// `None` for non-coursed or unassigned lines. `#[serde(default)]`
+    /// so carts persisted before this field existed still deserialize cleanly.
+    #[serde(default)]
+    pub coursing_status: Option<String>,
     /// Modifier choices serialized as a JSON string array of KdsModifier / ModifierSelection objects.
     /// `None` or empty string when no modifiers.
     #[serde(default)]
@@ -98,6 +103,7 @@ impl CartLine {
             unit_price,
             overridden_price: None,
             course: None,
+            coursing_status: None,
             modifiers_json: None,
             note: None,
         }
@@ -156,6 +162,23 @@ impl CartLine {
     /// becomes `"beverage"`, and an empty value clears the assignment.
     pub fn set_course(&mut self, course: Option<&str>) {
         self.course = normalize_course(course);
+    }
+
+    /// Read the coursing status for this line (ADR-68).
+    #[must_use]
+    pub fn coursing_status(&self) -> Option<&str> {
+        self.coursing_status.as_deref()
+    }
+
+    /// Set (or clear) the coursing status for this line (ADR-68).
+    ///
+    /// Values are trimmed and converted to lowercase (e.g. `"hold"`, `"fired"`).
+    /// Empty string or None clears the status.
+    pub fn set_coursing_status(&mut self, status: Option<&str>) {
+        self.coursing_status = match status.map(str::trim) {
+            Some(s) if !s.is_empty() => Some(s.to_ascii_lowercase()),
+            _ => None,
+        };
     }
 
     /// Set (or clear) modifiers serialized as JSON for this line.

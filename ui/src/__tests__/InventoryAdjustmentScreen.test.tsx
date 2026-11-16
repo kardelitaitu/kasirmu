@@ -90,6 +90,35 @@ describe('InventoryAdjustmentScreen', () => {
     expect(screen.getByText('Caffè Latte')).toBeInTheDocument();
     expect(screen.getByText('$ 4,50')).toBeInTheDocument();
     expect(screen.getByText((c) => c.includes('20') && c.includes('in stock'))).toBeInTheDocument();
+    expect(document.querySelector('.inv-adjust-stock--ok')).toBeInTheDocument();
+  });
+
+  it('applies low-stock status using custom product threshold', async () => {
+    const customProduct = {
+      sku: 'MUFFIN',
+      name: 'Blueberry Muffin',
+      price: { minor_units: 350, currency: 'USD' },
+      barcode: null,
+      in_stock: true,
+      stock_qty: 12,
+      low_stock_threshold: 15,
+      category: 'Food',
+    };
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_products_scoped') return Promise.resolve([customProduct]);
+      return Promise.reject(new Error(`Unknown command: ${cmd}`));
+    });
+
+    renderWithFluentSync(<ToastProvider><InventoryAdjustmentScreen /></ToastProvider>, inventoryFtl);
+    await waitFor(() => {
+      expect(screen.getByRole('searchbox')).toBeInTheDocument();
+    });
+    await userEvent.type(screen.getByRole('searchbox'), 'muffin');
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /blueberry muffin/i })).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole('option', { name: /blueberry muffin/i }));
+    expect(document.querySelector('.inv-adjust-stock--low')).toBeInTheDocument();
   });
 
   it('shows step 2 after product selected', async () => {

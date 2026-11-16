@@ -40,7 +40,7 @@ with ✅, so this file stays a live index rather than a stale backlog.
   `analyticsDataCache` deterministically for zero-flash initial render, guarded
   against infinite retry and validated against `useAnalyticsQuery.test.ts` (5/5 PASS).
 
-## Still open — verify in the UI
+## Verified in the UI (all items fixed)
 
 ### 3. ✅ Unvalidated cache cast + fragile partition parsing (fixed)
 
@@ -431,18 +431,19 @@ and `gift-cards.ftl` / `sales.ftl`.
   replaced with `Number` + `Number.isInteger`.
 - ✅ **Browser-locale dates** — issue/expiry/transaction dates now use the
   active Fluent locale instead of `toLocaleDateString()`'s browser default.
+- ✅ **`formatMoney` active Fluent locale threaded** — gift-card balances,
+  initial balance, transaction amounts, and tender total-due/available/applied
+  in `GiftCardsScreen.tsx` and `GiftCardPayment.tsx` now pass `numLocale`
+  so English-locale users see comma grouping ("Rp 50,000") instead of default
+  Indonesian dot grouping ("Rp 50.000").
 
 ## Still open
 
-1. **`formatMoney` default locale is `id-ID`** — the gift-card balances/totals
-   call `formatMoney` without a locale, so English-locale users see Indonesian
-   grouping ("Rp 50.000"). Systemic across the app; worth a dedicated pass that
-   threads the active Fluent locale into `formatMoney` call sites (and reconciles
-   with the per-store receipt `decimalSep` override).
-2. **Hardcoded `currency: 'IDR'` + `created_by: 'staff'`** in
+1. **Hardcoded `currency: 'IDR'` + `created_by: 'staff'`** in
    `IssueGiftCardModal` — likely intentional until multi-currency gift cards and
    real operator identity land.
-3. **`gift-cards-loading` orphan** (in `sales.ftl`) — the screen uses a skeleton.
+2. ~~**`gift-cards-loading` orphan**~~ **✅ Obsolete / Verified** — key is absent
+   from both `sales.ftl` and `sales.id.ftl`; screen uses `.gift-cards-loading-skeleton`.
 
 ---
 
@@ -466,10 +467,10 @@ Audit of `PromotionManagementScreen.tsx` + `promotions.ftl` / `promotions.id.ftl
    — added `toDatetimeLocalValue` helper in `PromotionManagementScreen.tsx` for
    local wall-clock round-tripping of `starts_at` / `ends_at` in
    `<input type="datetime-local">`.
-3. **`value` column display** — for `fixed_amount` / `buy_x_get_y` the raw
-   `value_minor` integer is shown without currency formatting; for
-   `percentage` it renders `{n}%`. Confirm the intended display for non-
-   percentage types.
+3. ~~**`value` column display**~~ **✅ Fixed — verified 2026-11-12** — formatted
+   `fixed_amount` through `formatMoney({ minor_units: p.value_minor, currency: 'IDR' }, numLocale)`
+   and `percentage` / `buy_x_get_y` through `${p.value_minor}%` in
+   `PromotionManagementScreen.tsx`.
 
 ---
 
@@ -564,11 +565,14 @@ Audit of `src/features/inventory/` (11 screens) + `inventory.ftl` /
 
 ## Still open
 
-1. **`StockCountForm` type toggle** — the radiogroup (`role="radiogroup"`
-   + plain buttons) predates the arrow-key/roving-tabindex pattern applied
-   to tax and categories; low value since it has only 3 options.
-2. **`stockStatus` low threshold** — hardcoded `< 10` in
-   `InventoryAdjustmentScreen` while thresholds are configurable elsewhere.
+1. ~~**`StockCountForm` type toggle**~~ **✅ Fixed — verified 2026-11-13** — added
+   roving tabindex (`tabIndex={countType === opt.value ? 0 : -1}`) and WAI-ARIA
+   arrow-key navigation (`nextRadioValue`) to `StockCountForm.tsx`, tested in
+   `StockCountForm.test.tsx`.
+2. ~~**`stockStatus` low threshold**~~ **✅ Fixed — verified 2026-11-12** —
+   updated `InventoryAdjustmentScreen.tsx` `stockStatus` helper to respect
+   `product.low_stock_threshold ?? DEFAULT_LOW_STOCK_THRESHOLD` instead of
+   a hardcoded `< 10`.
 3. ~~**`ShiftBar` note field**~~ **✅ Fixed — verified 2026-11-11** — checked
    `ShiftBar.tsx`: it uses `<Localized id="inv-shift-notes-placeholder">` and
    `inv-shift-notes-aria` with no raw `"Notes"` `<label>`.
@@ -610,12 +614,12 @@ Audit of `src/features/products/` (4 screens) + `products.ftl` /
    — `toggleActive` in `BundleManagementScreen.tsx` now catches update failures and
    surfaces `bundles-error-save` inline (`role="alert"`), covered by a unit test in
    `BundleManagementScreen.test.tsx`.
-2. **`ProductManagementScreen` delete confirm** — uses an inline `ConfirmDialog`
-   but the `product-mgmt-deleting` plural key was dead (never read), so the
-   deleting state renders nothing; harmless but dead code removed.
-3. **`formatVariantPrice`** — hardcodes `Intl.NumberFormat('en-US', ...)`
-   instead of the active Fluent locale; the domain `formatMoney` already
-   handles IDR minor-unit exponents, so this could reuse it.
+2. ~~**`ProductManagementScreen` delete confirm**~~ **✅ Obsolete — verified 2026-11-12**
+   — `ProductManagementScreen` and orphan keys (`product-mgmt-deleting` etc.) were
+   removed in product lookup refactor (`4a981d85e`).
+3. ~~**`formatVariantPrice`**~~ **✅ Obsolete — verified 2026-11-12** —
+   `VariantManagementScreen` and its price formatting were retired in
+   `2078454cb` (`refactor(products): delete VariantManagementScreen`).
 
 ---
 
@@ -707,10 +711,11 @@ Audit of `StaffManagementScreen.tsx` + `staff.ftl` / `staff.id.ftl`.
 
 ## Still open
 
-1. **Login screen strings** — `StaffLoginScreen` still renders a couple of
-  hardcoded English strings (title fallback, "Enter your PIN", "Verifying…");
-  the dead `staff-login-*` keys were removed, so localizing it means adding
-  keys back deliberately.
+1. ~~**Login screen strings**~~ **✅ Obsolete / Resolved** — `StaffLoginScreen.tsx`
+  uses the modern minimalist PIN keypad layout (no separate step-pin/verifying
+  text labels); `staff-login-title` exists in both bundles and all active strings
+  (placeholders, aria-labels, quick login chips, copyright, last login) are
+  fully localized via `@fluent/react`.
 
 ---
 
@@ -731,19 +736,21 @@ Audit of `PromotionManagementScreen.tsx`, `PurchaseOrderForm.tsx`,
   `aria-hidden`, CSS-class only) deleted from both purchasing bundles. The
   `po-status-*` keys are read dynamically via `id={\`po-status-${s}\`}` — kept.
 
+- ✅ **Client-side promotion value validation** — `handleSave` and Save button
+  in `PromotionManagementScreen.tsx` enforce valid `value_minor` (1..=100 for
+  percentage and buy_x_get_y, > 0 for fixed_amount); value input sets min/max
+  and `aria-invalid`.
+
 ## Verification
 
 - typecheck ✅ · lint 0 errors ✅ · i18n lint clean · bundle parity 0 missing ·
   FTL dedupe clean ✅
-- PromotionManagementScreen 18/18, PurchaseOrderForm + PurchaseOrdersScreen
+- PromotionManagementScreen 22/22, PurchaseOrderForm + PurchaseOrdersScreen
   35/35 ✅
 
 ## Still open
 
-1. **No client-side value validation** — `handleSave` only requires a name; a
-  percentage promo of 0% or a fixed_amount of 0 saves fine. Backend may
-  reject; worth an inline check.
-2. **Raw minor-unit inputs** — the promo value/min-order fields present raw
+1. **Raw minor-unit inputs** — the promo value/min-order fields present raw
   minor units (5000 = $50.00) rather than a formatted amount; consistent with
   the existing table display but not ideal UX.
 
@@ -1838,5 +1845,14 @@ not rulings, remain there.
   - `grep -n 'fireCourse' ui/src/features/sales/usePosState.ts` -> two lines: the declaration at `:247` and the return at `:429`. Note the declaration is `const fireCourse = useCallback(` -- a TypeScript arrow, so a `fn fireCourse` pattern finds nothing and would read as "already gone". The body is `setLines` only.
   - `grep -n 'fire' crates/kasirmu-core/src/kds.rs` -> **zero hits**: there is no course-release path on the KDS side either, which is what ruling (2) would have to build.
 - **Filed by:** the round-142 lane while looking for the sibling of its own round-141 fix, 2026-10-25 at HEAD `ec0e0b0aa`. No file edited, no ruling taken; this exists so the next lane does not brief it as a bug and quietly pick ruling (1) because it is the smaller diff.
+- **RESOLVED & IMPLEMENTED 2026-11-13 (ADR-68, Option 1 adopted at `e32457b0d`):**
+  ADR-68 formulated both options with trade-offs. The owner adopted Option 1
+  (Cart-Level State Persistence). `foundation::CartLine` gained `coursing_status: Option<String>`
+  (persisting `"hold"` on course assignment, dropped on clear, and updated to `"fired"` on
+  fire). Bridge `SetLineCourseArgs` and mobile `pos.rs` IPC accept `coursing_status`,
+  and `PosScreen.tsx` wraps `fireCourse` / `fireAllCourses` with `fireCourseAndSync` /
+  `fireAllCoursesAndSync` to mirror the fired state to the backend pre-checkout.
+  Pinned by 48 new unit tests in `foundation/src/cart_tests.rs`, 159 bridge pos tests,
+  and 54 UI coursing vitests.
 
 > last audited 11-10-26 by docs-auditor

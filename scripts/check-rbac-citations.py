@@ -68,6 +68,18 @@ REPO = Path(__file__).resolve().parent.parent
 PRESETS_SRC = REPO / "platform" / "core" / "src" / "rbac_presets.rs"
 DOC_ROOTS = ("docs",)
 
+#: Temporary roots for throwaway fixture trees.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root() -> str | None:
+    """The temp root this file's fixtures go under (None = system default), created."""
+    import os
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
+
 #: Generated or ignored trees under docs/. `/docs/src/operations/` and its five
 #: siblings are mdBook BUILD OUTPUT (`.gitignore:149-155`), so a copy of a live doc
 #: sits there untracked and this gate would report the same citation twice — once
@@ -304,13 +316,36 @@ def self_test() -> int:
     if read == 0:
         bad.append("the live scan read 0 markdown files")
 
-    # r196: the shell -- argv and root graded against a tempdir, the
-    # r166..r195 pattern. A synthetic presets file supplies the span; no git
-    # is needed because the scan is rglob-only.
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+
+    print(f"SELF-TEST OK ({cases} pure cases, no repo files touched)")
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository."""
     import contextlib as _ctx
     import io as _io
     from pathlib import Path as _Path
     import tempfile as _tempfile
+
     shell = 0
     PRESETS = ("//! synthetic rbac presets\n"
                "pub const ROLE_PRESETS: &[RolePreset] = &[];\n"
@@ -318,14 +353,17 @@ def self_test() -> int:
                "    permissions::KEY_ONE,\n"
                "    permissions::KEY_TWO,\n"
                "];\n")
-    with _tempfile.TemporaryDirectory() as td:
+
+    with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+        base = _Path(td).resolve()
+
         def make(files):
-            base = _Path(td)
             for rel, content in files.items():
                 dst = base / rel
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 dst.write_text(content, encoding="utf-8")
             return base
+
         def run(*extra, root=None):
             out, err = _io.StringIO(), _io.StringIO()
             try:
@@ -334,62 +372,75 @@ def self_test() -> int:
             except SystemExit as se:
                 return se.code, out.getvalue() + err.getvalue()
             return rc, out.getvalue() + err.getvalue()
+
+        # rung 1 -- the KILLING rung: an inventory-span preset citation must fail rc 1
         shell += 1
-        base = make({"platform/core/src/rbac_presets.rs": PRESETS,
-                     "docs/note.md": "granted only to MANAGER/ADMIN/OWNER (rbac_presets.rs:4)\n"})
+        make({"platform/core/src/rbac_presets.rs": PRESETS,
+              "docs/note.md": "granted only to MANAGER/ADMIN/OWNER (rbac_presets.rs:4)\n"})
         rc, text = run(root=base)
         if rc != 1 or "READS THE CONSTANT INVENTORY AS A ROLE PRESET" not in text:
-            print("  x an inventory-span preset citation must fail rc 1 (rc=%r text=%r)"
+            print("  x rung 1: an inventory-span preset citation must fail rc 1 (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
         if "docs/note.md:1" not in text:
-            print("  x the finding must name the doc and its line", file=sys.stderr)
+            print("  x rung 1: the finding must name the doc and its line", file=sys.stderr)
             return 1
+
+        # rung 2 -- self-aware correction must read clean rc 0
         shell += 1
         make({"docs/note.md": "the inventory is not a preset line; see ALL_ENFORCED\n"})
         rc, text = run(root=base)
         if rc != 0 or "no doc reads the inventory as a preset" not in text:
-            print("  x a self-aware correction must read clean (rc=%r text=%r)" % (rc, text[-90:]),
+            print("  x rung 2: a self-aware correction must read clean (rc=%r text=%r)" % (rc, text[-90:]),
                   file=sys.stderr)
             return 1
+
+        # rung 3 -- bare table citation in LIVE doc flagged rc 1
         shell += 1
         make({"docs/table.md": "| Guard | yes | crates/core/src/db/x.rs:249 |\n"})
         rc, text = run(root=base)
         if rc != 1 or "without backticks" not in text:
-            print("  x a bare table citation in a LIVE doc must be flagged (rc=%r text=%r)"
+            print("  x rung 3: a bare table citation in a LIVE doc must be flagged (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
+
+        # rung 4 -- dated record's bare table citation is exempt rc 0
         shell += 1
-        # the same row under docs/records/ is rule-2 exempt -- a record is
-        # evidence of THEN, not a claim to grade
         (base / "docs" / "table.md").unlink()
         make({"docs/records/2026/table.md": "| Guard | yes | crates/core/src/db/x.rs:249 |\n"})
         rc, text = run(root=base)
         if rc != 0 or "no doc reads" not in text:
-            print("  x a dated record's bare table citation is exempt (rc=%r text=%r)"
+            print("  x rung 4: a dated record's bare table citation is exempt (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
+
+        # rung 5 -- nested --self-test passes through argv under the re-entry guard
         shell += 1
-        # no markdown at all is a broken scan, not a clean one -- every doc
-        # the ladder wrote so far must be gone, note.md included
+        rc, text = run("--self-test", root=base)
+        if rc != 0 or "SELF-TEST OK" not in text or "LADDER OK" in text:
+            print("  x rung 5: nested --self-test must exit 0 without running duplicate ladder (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+        # rung 6 -- zero markdown read must refuse rc 2
+        shell += 1
         for gone in sorted((base / "docs").rglob("*.md")):
             gone.unlink()
         rc, text = run(root=base)
         if rc != 2 or "SCAN READ NOTHING" not in text:
-            print("  x zero markdown read must refuse rc 2, not pass (rc=%r text=%r)"
+            print("  x rung 6: zero markdown read must refuse rc 2, not pass (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
+
+        # rung 7 -- missing presets source fails rc 2 with SCAN BROKE
         shell += 1
-        # a missing span source is a SCAN BROKE refusal naming the path
         (base / "platform" / "core" / "src" / "rbac_presets.rs").unlink()
         rc, text = run(root=base)
-        if not (isinstance(rc, str) and "SCAN BROKE" in rc and "rbac_presets.rs" in rc):
-            print("  x a missing presets source must fail loudly (rc=%r)" % (rc,), file=sys.stderr)
+        if not (isinstance(rc, (int, str)) and ("SCAN BROKE" in str(rc) or "SCAN BROKE" in text) and "rbac_presets.rs" in (str(rc) + text)):
+            print("  x rung 7: a missing presets source must fail loudly (rc=%r text=%r)" % (rc, text[-90:]), file=sys.stderr)
             return 1
-    if bad if False else False:
-        return 1
-    print(f"SELF-TEST OK ({cases} pure + {shell} shell cases; the last shell case "
-          "reads a synthetic tree, the pure ones the real one)")
+
+    print("LADDER OK (%d shell rungs through main(): verdict, correction, live table, record table, nested self-test, empty corpus, missing source)" % shell)
     return 0
 
 

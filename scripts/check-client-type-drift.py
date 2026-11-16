@@ -45,9 +45,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 
 TYPES_REL = "ui/src/api/client/types.ts"
 # name -> file, for each builder that emits components.schemas. Keyed by function
@@ -453,22 +466,143 @@ def self_test():
         print("SELF-TEST FAILED (" + str(bad) + " of " + str(total) + ")")
         return 1
     print("SELF-TEST OK (" + str(total) + " cases, no files touched)")
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository."""
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+
+    shell = 0
+    BASE_SCHEMA = (
+        'fn build_base_schemas() -> Value {\n'
+        '    json!({\n'
+        '        "TestItem": {\n'
+        '            "type": "object",\n'
+        '            "properties": {\n'
+        '                "id": { "type": "string" },\n'
+        '                "name": { "type": "string" }\n'
+        '            }\n'
+        '        }\n'
+        '    })\n'
+        '}\n'
+    )
+    CLOUD_SCHEMA = 'fn build_cloud_schemas() -> Value { json!({}) }\n'
+
+    with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+        base = Path(td).resolve()
+
+        def put_tree(ts_content: str):
+            f1 = base / "crates" / "kasirmu-api" / "src" / "spec" / "schemas.rs"
+            f1.parent.mkdir(parents=True, exist_ok=True)
+            f1.write_text(BASE_SCHEMA, encoding="utf-8")
+
+            f2 = base / "apps" / "cloud-server" / "src" / "openapi" / "cloud.rs"
+            f2.parent.mkdir(parents=True, exist_ok=True)
+            f2.write_text(CLOUD_SCHEMA, encoding="utf-8")
+
+            f3 = base / "ui" / "src" / "api" / "client" / "types.ts"
+            f3.parent.mkdir(parents=True, exist_ok=True)
+            f3.write_text(ts_content, encoding="utf-8")
+
+        def run(*extra):
+            out, err = _io.StringIO(), _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                    rc = main(argv=list(extra), root=base)
+            except SystemExit as se:
+                return se.code, out.getvalue() + err.getvalue()
+            return rc, out.getvalue() + err.getvalue()
+
+        # rung 1 -- the KILLING rung: wire has member missing from TS -> fails rc 1 with DRIFT
+        shell += 1
+        put_tree("export interface TestItem {\n  id: string;\n}\n")
+        rc, text = run()
+        if rc != 1 or "DRIFT: 1 discrepancy" not in text or "TestItem" not in text or "name" not in text:
+            print("  x rung 1: missing member must report drift rc 1 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+        # rung 2 -- clean arm: matching schema and types must exit 0 CLEAN
+        shell += 1
+        put_tree("export interface TestItem {\n  id: string;\n  name: string;\n}\n")
+        rc, text = run()
+        if rc != 0 or "CLEAN: every shared type matches the published schema" not in text:
+            print("  x rung 2: matching schema and types must exit 0 CLEAN (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+        # rung 3 -- invented member in TS -> fails rc 1 with DRIFT
+        shell += 1
+        put_tree("export interface TestItem {\n  id: string;\n  name: string;\n  extra: string;\n}\n")
+        rc, text = run()
+        if rc != 1 or "DRIFT: 1 discrepancy" not in text or "extra" not in text:
+            print("  x rung 3: invented member must report drift rc 1 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+        # rung 4 -- clean --json must report clean: true
+        shell += 1
+        put_tree("export interface TestItem {\n  id: string;\n  name: string;\n}\n")
+        rc, text = run("--json")
+        if rc != 0 or '"clean": true' not in text:
+            print("  x rung 4: clean --json must report clean: true (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+        # rung 5 -- missing types.ts must refuse with exit 2
+        shell += 1
+        (base / "ui" / "src" / "api" / "client" / "types.ts").unlink()
+        rc, text = run()
+        if rc != 2 or "cannot parse inputs" not in text:
+            print("  x rung 5: missing types.ts must refuse with exit 2 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+        # rung 6 -- nested --self-test passes through argv under re-entry guard
+        shell += 1
+        rc, text = run("--self-test")
+        if rc != 0 or "SELF-TEST OK" not in text or "LADDER OK" in text:
+            print("  x rung 6: nested --self-test must exit 0 without running duplicate ladder (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+    print("LADDER OK (%d rungs: missing-member-kill, matching-clean, invented-member, json-output, missing-input, nested-selftest)" % shell)
     return 0
 
 
-def main():
+def main(argv=None, root=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", default=".")
+    ap.add_argument("--root", default=None)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--full", action="store_true")
     ap.add_argument("--self-test", action="store_true")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
-    root = Path(args.root).resolve()
+    if root is None and args.root:
+        root = args.root
+    base = REPO if root is None else Path(root).resolve()
     try:
-        spec = spec_schemas(root)
-        ts = ts_types(root)
+        spec = spec_schemas(base)
+        ts = ts_types(base)
     except (FileNotFoundError, OSError, ValueError, KeyError) as exc:
         print("error: cannot parse inputs: %s" % exc, file=sys.stderr)
         return 2
@@ -516,4 +650,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

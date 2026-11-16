@@ -12380,3 +12380,541 @@ that number did not move. `verify-core-size`'s ladder does not exercise a relati
 default-path refusal is not covered. The census in r276 said "has a ladder" is a
 weaker test than "kills"; this round is one file moving from the weaker claim to
 the stronger one, and 44 laddered checkers is still the population, not 102.
+
+
+### Round 278 (2026-11-13) -- check-rbac-citations gains a 7-rung ladder and proves against repo base mutation
+
+`scripts/check-rbac-citations.py` had 4 pure test cases in `self_test()` and a mini
+in-line shell test that was un-laddered and missing a re-entry guard.
+
+ADDED:
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 7 rungs:
+  Rung 1 (killing rung): throwaway tree with inventory citation fails rc 1 with
+  exact doc and line attribution.
+  Rung 2: self-aware correction passes rc 0.
+  Rung 3: bare table citation in live doc flagged rc 1.
+  Rung 4: dated records table citation is exempt rc 0.
+  Rung 5: nested `--self-test` passes rc 0 under re-entry guard.
+  Rung 6: empty markdown corpus refuses rc 2.
+  Rung 7: missing presets source fails loudly with rc 2 / SCAN BROKE.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/check-rbac-citations.py --self-test` -> OK (4 pure + 7 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-rbac-citations.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 48 -> 49 of 70 (21 un-contracted remaining, next target `verify-ps-syntax.py`).
+
+Honest limits: the 7-rung ladder exercises synthetic fixture trees in temporary directories; it does not scan live external documentation repositories outside the checked-out tree.
+
+
+### Round 279 (2026-11-13) -- verify-ps-syntax gains a 6-rung ladder and proves against scan base mutation
+
+`scripts/verify-ps-syntax.py` had 9 pure test cases in `self_test()` and an inline
+5-case shell block lacking a dedicated `shell_ladder()` and re-entry guard.
+
+ADDED:
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): broken script fails rc 1 with root-relative path.
+  Rung 2 (clean arm): walk scope finds ok.ps1 and install.ps1, exits 0.
+  Rung 3: vendored trees (node_modules) outside walk scope, exits 0.
+  Rung 4: nested `--self-test` passes rc 0 through argv under re-entry guard.
+  Rung 5: zero .ps1 under root refuses rc 2.
+  Rung 6: tracked scope: git init + git add ok.ps1, untracked-bad.ps1 ignored, exits 0.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+- Disambiguated `target_root` in `targets()` so `base = ROOT if root is None else Path(root).resolve()` in `main()` is the unique spliceable anchor for mutation testing.
+
+MEASURED:
+- `python scripts/verify-ps-syntax.py --self-test` -> OK (9 pure + 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-ps-syntax.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 49 -> 50 of 70 (20 un-contracted remaining, next target `verify-exhaustive-deps.py`).
+
+Honest limits: the 6-rung ladder tests parsing of synthetic .ps1 files; it does not execute full PowerShell scripts or validate runtime cmdlet dependencies on non-Windows hosts.
+
+
+### Round 280 (2026-11-13) -- verify-exhaustive-deps gains a 7-rung ladder and proves against repo base mutation
+
+`scripts/verify-exhaustive-deps.py` had 10 test cases in `self_test()` (6 pure + 4 through a fake eslint) and an inline shell block lacking a dedicated `shell_ladder()` and re-entry guard.
+
+ADDED:
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 7 rungs:
+  Rung 1 (killing rung): over-cap count fails rc 1 naming the cap ("exceed the cap of 0").
+  Rung 2: below-cap count reads ok with lowering suggestion ("below cap -- consider lowering it to 1").
+  Rung 3: `--set-baseline` records the measured count ("baseline set to 1").
+  Rung 4: baseline file on disk actually carries the new count.
+  Rung 5: usage/config error from eslint (exit code 2) fails closed.
+  Rung 6: missing eslint binary refuses with SystemExit naming the path.
+  Rung 7: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+- Standardized `base = REPO if root is None else Path(root).resolve()` in `main()` as the unique spliceable anchor for mutation testing.
+
+MEASURED:
+- `python scripts/verify-exhaustive-deps.py --self-test` -> OK (10 cases: 6 pure + 4 through fake eslint; 7 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-exhaustive-deps.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 50 -> 51 of 70 (19 un-contracted remaining, next target `verify-flaky-quarantine.py`).
+
+Honest limits: the 7-rung ladder mocks eslint output through a fake executable; it proves the threshold classifier and parser rather than running a full ESLint analysis across all components.
+
+
+### Round 281 (2026-11-13) -- verify-flaky-quarantine gains a 10-rung ladder and proves against rebound root mutation
+
+`scripts/verify-flaky-quarantine.py` had 13 pure/git test cases in `self_test()` and an inline 9-case shell block lacking a dedicated `shell_ladder()` and re-entry guard.
+
+ADDED:
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 10 rungs:
+  Rung 1 (killing rung): expired entry fails rc 1 naming EXPIRED ("EXPIRED on <date>").
+  Rung 2: clean single-entry manifest passes rc 0 ("PASS: quarantine manifest valid").
+  Rung 3: `--report` still gates and prints INFO line rc 0.
+  Rung 4: missing required field fails rc 1.
+  Rung 5: free-text issue ref fails rc 1.
+  Rung 6: unparseable manifest fails rc 1.
+  Rung 7: empty corpus behind manifest refuses rc 1.
+  Rung 8: manifest-less root refuses rc 1.
+  Rung 9: unknown dashed flag refuses rc 2.
+  Rung 10: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+- Rebound `root = Path(root).resolve()` in `main()` as the unique spliceable anchor for mutation testing.
+
+MEASURED:
+- `python scripts/verify-flaky-quarantine.py --self-test` -> OK (13 pure/git cases; 10 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-flaky-quarantine.py` -> "rebound root ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 51 -> 52 of 70 (18 un-contracted remaining, next target `verify-dockerfile-workspace.py`).
+
+Honest limits: the 10-rung ladder proves quarantine manifest schema parsing and expiration gating against temporary fixtures; it does not execute the quarantined tests themselves.
+
+
+### Round 282 (2026-11-13) -- verify-dockerfile-workspace gains an 8-rung ladder and proves against scan base mutation
+
+`scripts/verify-dockerfile-workspace.py` had pure test cases in `self_test()` and an inline 7-case shell block lacking a dedicated `shell_ladder()` and re-entry guard.
+
+ADDED:
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 8 rungs:
+  Rung 1 (killing rung): missing member manifest fails rc 1 naming missing COPY ("missing 'COPY crates/beta/Cargo.toml'").
+  Rung 2: fully covered fixture reads OK over 4 members ("OK: all 4 workspace members").
+  Rung 3: stale dummy version fails naming the bump ("inline dummy version must be '0.0.41'").
+  Rung 4: missing dummy src fails ("expected inline dummy src").
+  Rung 5: apt asymmetry fails naming the package ("DOCKER-10 drift" and "ripgrep").
+  Rung 6: exempted asymmetry reads OK with a NOTE ("deliberate apt asymmetry").
+  Rung 7: missing Dockerfile fails rc 1 ("Dockerfile not found").
+  Rung 8: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+- Disambiguated `ws_root` in `workspace_members()` and `df_root` in `check_dockerfile()` so `base = ROOT if root is None else Path(root).resolve()` in `main()` is the unique spliceable anchor for mutation testing.
+
+MEASURED:
+- `python scripts/verify-dockerfile-workspace.py --self-test` -> OK (apt-divergence + workspace reader cases; 8 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-dockerfile-workspace.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 52 -> 53 of 70 (17 un-contracted remaining, next target `check-hardcoded-copy.py`).
+
+Honest limits: the 8-rung ladder checks Dockerfile member copy declarations against synthetic workspace Cargo.tomls; it does not execute Docker container builds or pull remote base images.
+
+
+### Round 283 (2026-11-13) -- check-hardcoded-copy gains a 6-rung ladder and proves against repo base mutation
+
+`scripts/check-hardcoded-copy.py` had pure test cases in `self_test()` (12 graded shapes + census floor + live read) and an inline 5-case shell block lacking a dedicated `shell_ladder()` and re-entry guard.
+
+ADDED:
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): unbudgeted copy exits 1 naming the file ("NEW HARDCODED COPY" and "ui/src/x/A.tsx").
+  Rung 2: budgeted copy string exits 0 ("no file exceeds", "1 across 1").
+  Rung 3: missing budget file refuses with exit 2 ("budget file missing").
+  Rung 4: `--update` writes fixture's budget and exits 0 ("budget written").
+  Rung 5: corpus with no sources refuses with exit 2 ("SCAN READ NOTHING").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+- Disambiguated `scan_root` in `scan()` so `base = REPO if root is None else Path(root).resolve()` in `main()` is the unique spliceable anchor for mutation testing.
+
+MEASURED:
+- `python scripts/check-hardcoded-copy.py --self-test` -> OK (14 pure cases; 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-hardcoded-copy.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 53 -> 54 of 70 (16 un-contracted remaining, next target `check-client-type-drift.py`).
+
+Honest limits: the 6-rung ladder validates hardcoded copy string detection and budget counting on isolated fixture files; it does not replace the full l10n bundle parity gate.
+
+
+### Round 284 (2026-11-13) -- check-client-type-drift gains a 6-rung ladder and proves against repo base mutation
+
+`scripts/check-client-type-drift.py` had 11 pure test cases in `self_test()` and lacked `root` parameterization on `main()` and a `shell_ladder()` contract.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = REPO if root is None else Path(root).resolve()` resolution.
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): wire has member missing from TS -> fails rc 1 with DRIFT ("DRIFT: 1 discrepancy", "TestItem", "name").
+  Rung 2: matching schema and types exits 0 CLEAN ("CLEAN: every shared type matches the published schema").
+  Rung 3: invented member in TS fails rc 1 with DRIFT ("DRIFT: 1 discrepancy", "extra").
+  Rung 4: clean --json reports clean: true.
+  Rung 5: missing types.ts refuses with exit 2 ("cannot parse inputs").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/check-client-type-drift.py --self-test` -> OK (11 pure cases; 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-client-type-drift.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 54 -> 55 of 70 (15 un-contracted remaining, next target `check-tz-invariance.py`).
+
+Honest limits: the 6-rung ladder validates TypeScript and Rust wire type discrepancy detection on synthetic schemas; it does not validate runtime network serialization.
+
+
+### Round 285 (2026-11-13) -- check-tz-invariance wraps execution in main(argv, root) with a 5-rung ladder and proves against scan base mutation
+
+`scripts/check-tz-invariance.py` had 8 sensitivity arithmetic / zone preflight cases in `self_test()` and ran vitest sweeps at top-level on import, lacking both `main(argv, root)` parameterization and a `shell_ladder()` contract.
+
+ADDED:
+- Wrapped module execution in `main(argv=None, root=None, _runner=None)` accepting root redirection and a fast test runner override.
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 5 rungs:
+  Rung 1 (killing rung): differing results across zones fails rc 1 with FAIL: anchored range depends on host timezone.
+  Rung 2: identical pass across all zones passes rc 0 with PASS: identical result.
+  Rung 3: identical failure across all zones fails rc 1 with FAIL: every zone failed IDENTICALLY.
+  Rung 4: missing UI directory under root refuses with rc 2.
+  Rung 5: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/check-tz-invariance.py --self-test` -> OK (8 sensitivity cases; 5 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-tz-invariance.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 55 -> 56 of 70 (14 un-contracted remaining, next target `verify-windows-config.py`).
+
+Honest limits: the 5-rung ladder tests timezone sensitivity handling and fast test runner dispatch; it does not spin up all system timezones simultaneously on live test runs.
+
+
+### Round 286 (2026-11-13) -- verify-windows-config gains a 7-rung ladder and proves against scan base mutation
+
+`scripts/verify-windows-config.py` had 11 pure/plant assertions in `self_test()` and lacked `root` parameterization on `main()` and a `shell_ladder()` contract.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = ROOT if root is None else Path(root).resolve()` resolution.
+- Threaded `root` through `check_tauri_configs`, `check_source_manifests`, `check_exe`, and `rel(path, root)`.
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 7 rungs:
+  Rung 1 (killing rung): perMachine NSIS installMode exits 1 naming the violation ("NSIS installMode is 'perMachine'" and "desktop-tauri").
+  Rung 2: clean currentUser configs and valid manifests exit 0 ("0 violation(s)").
+  Rung 3: manifest requesting elevation exits 1 naming the violation ("manifest requests elevation").
+  Rung 4: missing manifest file exits 1 ("missing app.manifest").
+  Rung 5: empty population (no tauri.conf.json) refuses with exit 2 ("EMPTY POPULATION").
+  Rung 6: `--report-only` flag with perMachine exits 0 while reporting the violation ("1 violation(s)").
+  Rung 7: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/verify-windows-config.py --self-test` -> OK (11 pure cases; 7 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-windows-config.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 56 -> 57 of 70 (13 un-contracted remaining, next target `verify-invoke-parity.py`).
+
+Honest limits: the 7-rung ladder tests Windows manifest elevation and installMode verification on synthetic XML/JSON files; it does not test binary signature validation.
+
+
+### Round 287 (2026-11-13) -- verify-invoke-parity extracts 7-rung ladder and proves against repo root mutation
+
+`scripts/verify-invoke-parity.py` had 11 pure cases in `self_test()` and inline unisolated shell assertions lacking a dedicated `shell_ladder()` contract and re-entry guard.
+
+ADDED:
+- Extracted `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 7 rungs:
+  Rung 1 (killing rung): missing sessionToken fails rc 1 naming the violation ("payload carries no sessionToken").
+  Rung 2: clean fixture reports 0 violations and exits 0 ("2 invoke(s)", "0 violation(s)").
+  Rung 3: empty handler list fails rc 1 ("parsed as empty").
+  Rung 4: missing lib.rs fails rc 1 ("lib.rs not found for shell").
+  Rung 5: missing api dir fails rc 1 ("api dir not found").
+  Rung 6: unrecognized argument refuses with rc 2.
+  Rung 7: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/verify-invoke-parity.py --self-test` -> OK (11 pure cases; 7 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-invoke-parity.py` -> "repo root ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 57 -> 58 of 70 (12 un-contracted remaining, next target `check-rust-doc-paths.py`).
+
+Honest limits: the 7-rung ladder verifies sessionToken requirement extraction on synthetic invoke call sites; it does not execute live Tauri IPC invocations.
+
+
+### Round 288 (2026-11-13) -- check-rust-doc-paths extracts 8-rung ladder and proves against scan base mutation
+
+`scripts/check-rust-doc-paths.py` had 25 pure cases in `self_test()` and inline unisolated shell assertions lacking a dedicated `shell_ladder()` contract and re-entry guard.
+
+ADDED:
+- Extracted `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 8 rungs:
+  Rung 1 (killing rung): absent path citation fails rc 1 naming the violation ("names a path that does not exist").
+  Rung 2: tracked path citation reads clean and exits 0 ("clean - 3 .rs file(s) scanned").
+  Rung 3: full path line citation past EOF fails rc 1 ("cites line 99 but the file has 2").
+  Rung 4: bare basename line citation past EOF fails rc 1 ("cites line 99 but the file has 2").
+  Rung 5: real historical move is exempt and exits 0 ("clean - 3 .rs file(s)").
+  Rung 6: rule 2 invented historical path fails rc 1 ("NEVER existed").
+  Rung 7: sub-floor corpus refuses with exit 2 ("REFUSED - only").
+  Rung 8: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/check-rust-doc-paths.py --self-test` -> OK (25 pure cases; 8 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-rust-doc-paths.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 58 -> 59 of 70 (11 un-contracted remaining, next target `verify-topology-parity.py`).
+
+Honest limits: the 8-rung ladder validates doc path and line citation existence against synthetic .rs trees; it does not inspect comments inside binary crates or external dependencies.
+
+
+### Round 289 (2026-11-13) -- verify-topology-parity extracts 7-rung ladder and proves against scan base mutation
+
+`scripts/verify-topology-parity.py` had 23 pure cases in `self_test()` and inline unisolated shell assertions lacking a dedicated `shell_ladder()` contract and re-entry guard.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = ROOT if root is None else Path(root).resolve()` resolution and dispatch for `--self-test`.
+- Extracted `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 7 rungs:
+  Rung 1 (killing rung): differing contract copies fails rc 1 with DRIFT.
+  Rung 2: parity-clean tree passes both phases and exits 0 ("byte-identical", "corpus covers 1 pairings").
+  Rung 3: UI tree with missing contract fails rc 1 ("compared NOTHING").
+  Rung 4: server-only checkout skips declaredly with rc 0 ("NOT FULLY VERIFIED").
+  Rung 5: missing corpus fails rc 1 ("missing corpus").
+  Rung 6: stale corpus schemaVersion fails rc 1 ("the corpus is stale").
+  Rung 7: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/verify-topology-parity.py --self-test` -> OK (23 pure cases; 7 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-topology-parity.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 59 -> 60 of 70 (10 un-contracted remaining, next target `check-mapper-alignment.py`).
+
+Honest limits: the 7-rung ladder tests topology contract byte-parity and schema version checks on synthetic trees; it does not test network topology deployment.
+
+
+### Round 290 (2026-11-13) -- check-mapper-alignment gains a 6-rung ladder and proves against scan base mutation
+
+`scripts/check-mapper-alignment.py` had 26 pure cases in `_self_test()` and lacked `root` parameterization on `main()` and a `shell_ladder()` contract.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = ROOT if root is None else Path(root).resolve()` resolution.
+- Defined `self_test()` wrapping `_self_test()` and `shell_ladder()`.
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): misaligned mapper fails rc 1 naming the disagreement ("mapper(s) read a column whose name does not match the field").
+  Rung 2: aligned mapper passes clean and exits 0 ("no UNacknowledged positional mapper disagrees").
+  Rung 3: aliased column with different words fails rc 1 ("mapper(s) read a column whose name does not match the field").
+  Rung 4: aliased column with related words passes clean and exits 0 ("no UNacknowledged positional mapper disagrees").
+  Rung 5: non-existent root directory refuses with exit 2 ("refused: no such root(s)").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/check-mapper-alignment.py --self-test` -> OK (26 pure cases; 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-mapper-alignment.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 60 -> 61 of 70 (9 un-contracted remaining, next target `verify-no-hardcoded-money-format.py`).
+
+Honest limits: the 6-rung ladder checks mapper SQL column name alignment on synthetic mapper modules; it does not execute SQL against a live SQLite or PostgreSQL instance.
+
+
+### Round 291 (2026-11-13) -- verify-no-hardcoded-money-format gains a 6-rung ladder and proves against scan base mutation
+
+`scripts/verify-no-hardcoded-money-format.py` had 3 pure cases in `self_test()` running subprocesses against dynamic temporary fixture trees and lacked `root` parameterization on `main()` and a `shell_ladder()` contract.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = Path(root).resolve() if root is not None else ROOT` resolution and dynamic `ROOT = resolve_source_root(ROOTS)[0]`.
+- Defined `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): planted `minor_units / 100` finding fails rc 1 naming the pattern.
+  Rung 2: clean tree with all 5 roots passes clean and exits 0 ("PASS").
+  Rung 3: empty tree (0 .rs files) refuses with exit 2 ("REFUSED", "walked none of the tree").
+  Rung 4: partial coverage refuses with exit 2 ("REFUSED", "walked only part").
+  Rung 5: explicit `--roots` passes on partial tree with exit 0 ("PASS").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/verify-no-hardcoded-money-format.py --self-test` -> OK (3 subprocess cases; 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-no-hardcoded-money-format.py` -> "base resolves root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 61 -> 62 of 70 (8 un-contracted remaining, next target `check-query-plans.py`).
+
+Honest limits: the 6-rung ladder checks floating-point money pattern detection on synthetic .rs files; it does not prove the absence of logical financial bugs outside regex patterns.
+
+
+### Round 292 (2026-11-13) -- check-query-plans gains a 6-rung ladder and proves against repo base mutation
+
+`scripts/check-query-plans.py` had 28 pure cases in `self_test()` and lacked `root` parameterization on `main()` and a `shell_ladder()` contract.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = REPO if root is None else Path(root).resolve()` resolution.
+- Updated `probe_source(path=None)` to inspect `path` (defaulting to `PROBE_FILE`), and plumbed `repo=base` to `run_probe` / `run_unit_plan_gate`.
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): planted probe file with `--list` verifies that `root` is respected and custom table/probe names are reported (rc 0, "plant_probe", "plant_table").
+  Rung 2: missing probe file in fixture root refuses with exit 2 ("probe file not found:", fixture path named).
+  Rung 3: empty probe file with `--list` exits 0 ("0 probed queries").
+  Rung 4: multi-probe probe file with constant and copied origins accurately classifies and lists them (rc 0, "2 probed queries", "[CONSTANT]", "[copied]").
+  Rung 5: invalid CLI flag exits 2 ("unrecognized arguments").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard ("SELF-TEST OK").
+- Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/check-query-plans.py --self-test` -> OK (28 pure cases; 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-query-plans.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 62 -> 63 of 70 (7 un-contracted remaining, next target `verify-migration-column-types.py`).
+
+Honest limits: the 6-rung ladder validates query probe definitions and classifications on fixture probe files; it does not execute SQLite EXPLAIN QUERY PLAN against a live database.
+
+
+### Round 293 (2026-11-13) -- verify-migration-column-types gains a 7-rung ladder and proves against scan base mutation
+
+`scripts/verify-migration-column-types.py` had 8 pure cases in `self_test()` and lacked `root` parameterization on `main()` and a `shell_ladder()` contract.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = ROOT if root is None else Path(root).resolve()` resolution.
+- Plumbed `base` and `migrations` through `classify_roots`, `refuse_roots`, `refuse`, and `staged_migration_paths`.
+- Added module registration workaround `if __name__ not in sys.modules: sys.modules[__name__] = types.ModuleType(__name__)` for Python 3.14 dataclasses compatibility under isolated `importlib` execution.
+- Defined `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 7 rungs:
+  Rung 1 (killing rung): planted unwhitelisted float column fails rc 1 ("bad_col is float-typed").
+  Rung 2: clean fixture tree with 4 whitelist files passes clean and exits 0 ("ok: no unwhitelisted float columns").
+  Rung 3: missing whitelist file triggers stale whitelist entry, failing rc 1 ("stale whitelist entry").
+  Rung 4: empty migration directory refuses with exit 2 ("REFUSED", "scanned no migration files").
+  Rung 5: unknown flag refuses with exit 2 ("REFUSED", "unrecognised argument --no-such-flag").
+  Rung 6: positional root refuses with exit 2 ("named no directory").
+  Rung 7: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/verify-migration-column-types.py --self-test` -> OK (8 pure cases; 7 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-migration-column-types.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 63 -> 64 of 70 (6 un-contracted remaining, next target `verify-debt-markers.py`).
+
+Honest limits: the 7-rung ladder tests float-type migration column detection against synthetic migration files; it does not execute SQLite or PostgreSQL migrations.
+
+
+### Round 294 (2026-11-13) -- verify-debt-markers gains a 6-rung ladder and proves against scan base mutation
+
+`scripts/verify-debt-markers.py` had 11 corpus cases and inline shell checks in `self_test()` and lacked a formal `shell_ladder()` contract and `_LADDER_RUNNING` re-entry guard.
+
+ADDED:
+- Standardized `base = ROOT if root is None else Path(root).resolve()` resolution in `main()`.
+- Extracted and formalized `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1: resolved marker in fixture tree exits 0 ("0 unresolvable debt ID(s)").
+  Rung 2 (killing rung): orphan marker in fixture tree fails rc 1 ("DEBT IDS THAT RESOLVE TO NOTHING").
+  Rung 3: non-scannable files refuse with exit 2 ("REFUSED").
+  Rung 4: missing named root refuses with exit 2 ("named root(s) not present").
+  Rung 5: index-ahead file is skipped and exits 0 ("absent from the working tree").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard ("SELF-TEST OK").
+- Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with automatic fixture cleanup.
+
+MEASURED:
+- `python scripts/verify-debt-markers.py --self-test` -> OK (11 corpus cases; 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-debt-markers.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 64 -> 65 of 70 (5 un-contracted remaining, next target `check-gate-runners.py`).
+
+Honest limits: the 6-rung ladder checks debt ID resolution against synthetic repo trees; it does not verify the operational accuracy of the underlying debt records.
+
+
+### Round 295 (2026-11-13) -- check-gate-runners gains a 6-rung ladder and proves against scan base mutation
+
+`scripts/check-gate-runners.py` had 47 pure cases and 5 shell cases inside `_self_test()` and lacked `root` parameterization on `main()` and a dedicated `shell_ladder()` contract with `_LADDER_RUNNING` re-entry guard.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = ROOT if root is None else Path(root).resolve()` resolution.
+- Defined `self_test()` wrapping `_self_test()` and `shell_ladder()`.
+- Extracted and formalized `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): unresolved runner label fails rc 1 ("do not resolve").
+  Rung 2: clean fixture passes with rc 0 ("every declared runner resolves").
+  Rung 3: duplicate runner label fails rc 1 ("declared by more than one gate").
+  Rung 4: starved corpus (missing `dev-ci.yml`) refuses with exit 2 ("REFUSED").
+  Rung 5: non-dev-ci workflow refuses with exit 2 ("REFUSED").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard ("SELF-TEST OK").
+- Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with automatic fixture cleanup.
+
+MEASURED:
+- `python scripts/check-gate-runners.py --self-test` -> OK (47 pure cases; 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-gate-runners.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 65 -> 66 of 70 (4 un-contracted remaining, next target `check-l10n-test-maps.py`).
+
+Honest limits: the 6-rung ladder tests gate runner label resolution against synthetic dev-ci workflows; it does not trigger GitHub Actions runner workflows.
+
+
+### Round 296 (2026-11-13) -- check-l10n-test-maps gains a 6-rung ladder and proves against repo base mutation
+
+`scripts/check-l10n-test-maps.py` had 4 pure/liveness cases in `self_test()` and lacked `root` parameterization on `main()` and a dedicated `shell_ladder()` contract with `_LADDER_RUNNING` re-entry guard.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = REPO if root is None else Path(root).resolve()` resolution.
+- Re-scoped `REPO`, `UI_SRC`, `LOCALES`, and `BASELINE_PATH` in `main()` with environment preservation in `try ... finally`.
+- Defined `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): unbaselined map hole fails rc 1 ("A HAND-MAINTAINED l10n MAP GAINED A HOLE:").
+  Rung 2: clean fixture passes with rc 0 ("OK: no new l10n map holes").
+  Rung 3: stale baseline entry fails rc 1 ("BASELINE IS STALE").
+  Rung 4: empty test suite refuses with exit 2 ("SCAN READ NOTHING").
+  Rung 5: missing locales directory refuses with exit 2 ("SCAN BROKE").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard ("SELF-TEST OK").
+- Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with automatic fixture cleanup.
+
+MEASURED:
+- `python scripts/check-l10n-test-maps.py --self-test` -> OK (4 cases; 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-l10n-test-maps.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 66 -> 67 of 70 (3 un-contracted remaining, next target `verify-pg-tests-ran.py`).
+
+Honest limits: the 6-rung ladder validates l10n test map coverage on synthetic test and locale files; it does not test runtime translation rendering in React components.
+
+
+### Round 297 (2026-11-13) -- verify-pg-tests-ran gains a 6-rung ladder and proves against scan base mutation
+
+`scripts/verify-pg-tests-ran.py` had comprehensive pure cases and junit parsing cases in `self_test()` and lacked `root` parameterization on `main()` and a dedicated `shell_ladder()` contract with `_LADDER_RUNNING` re-entry guard.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = ROOT if root is None else Path(root).resolve()` resolution.
+- Plumbed `root=base` through `count_source_arms(root=base)`, `count_silent_abandons(root=base)`, and `grade(..., root=base)`.
+- Defined `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): single-arm fixture tree under `apps/cloud-server` with `--census-only` verifies that `root` is respected and single arm is reported (rc 0, "1  TOTAL skip arms across 1 test files").
+  Rung 2: missing log file path exits 1 ("FAIL  LOG: no captured log at").
+  Rung 3: missing junit report path exits 1 ("FAIL  JUNIT: no report at").
+  Rung 4: clean nextest junit report passes with exit 0 ("no <flakyFailure>").
+  Rung 5: flaky nextest junit report fails with exit 1 ("flaky_on_first_attempt").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard ("self-test: PASS").
+- Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with automatic fixture cleanup.
+
+MEASURED:
+- `python scripts/verify-pg-tests-ran.py --self-test` -> OK (pure cases + 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-pg-tests-ran.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 67 -> 68 of 70 (2 un-contracted remaining, next target `verify-ci-docs-drift.py`).
+
+Honest limits: the 6-rung ladder checks PG skip arm counting and nextest junit parsing on synthetic trees and reports; it does not spin up a live PostgreSQL cluster.
+
+
+### Round 298 (2026-11-13) -- verify-ci-docs-drift gains a 6-rung ladder and proves against scan base mutation
+
+`scripts/verify-ci-docs-drift.py` had comprehensive pure cases and 5 inline shell checks in `self_test()` and lacked a formal `shell_ladder()` contract and `_LADDER_RUNNING` re-entry guard.
+
+ADDED:
+- Standardized `base = ROOT if root is None else Path(root).resolve()` and globals update in `main()`.
+- Added mutant-path parent resolution fallback for `ROOT = Path(__file__).resolve().parent.parent` so `ROOT / "scripts"` is found when running in `.prove-ladder-` tempdirs.
+- Formalized `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): dangling workflow inventory fails rc 1 ("2 drift item(s)").
+  Rung 2: coherent mini-corpus grades clean with exit 0 ("0 drift item(s)").
+  Rung 3: report-only prints items and exits 0 ("2 drift item(s)").
+  Rung 4: missing ci-pipeline.md refuses with exit 2 ("docs not found").
+  Rung 5: unparseable manifest refuses with exit 2 ("gate manifest invalid JSON").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard ("all self-test cases passed").
+- Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with automatic fixture cleanup.
+
+MEASURED:
+- `python scripts/verify-ci-docs-drift.py --self-test` -> OK (pure cases + 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-ci-docs-drift.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 68 -> 69 of 70 (1 un-contracted remaining, next target `verify-agents-mirrors.py`).
+
+Honest limits: the 6-rung ladder checks CI workflow documentation drift against synthetic manifests; it does not test CI execution.
+
+
+### Round 299 (2026-11-13) -- verify-agents-mirrors gains a 6-rung ladder, reaching 100% census contract completion (70 of 70)
+
+`scripts/verify-agents-mirrors.py` (3083 lines) had 40 pure in-memory mutation test cases in `self_test()` and lacked `main()`, `root` parameterization, and a formal `shell_ladder()` contract with `_LADDER_RUNNING` re-entry guard.
+
+ADDED:
+- Defined `main(argv=None, root=None)` with standard `base = ROOT if root is None else Path(root).resolve()` resolution.
+- Added `ROOT = DEFAULT_ROOT` and positional CLI root argument support.
+- Defined `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): planted gate count drift in `AGENTS.md` fails rc 1 ("claims 6 pre-commit steps").
+  Rung 2: clean fixture tree passes with exit 0 ("every policed mirror (1) agrees with the repo").
+  Rung 3: missing `.githooks/pre-commit` fails rc 1 ("1 of 4 policed paths missing [.githooks/pre-commit]").
+  Rung 4: stale skill claim fails rc 1 ("pre-commit steps").
+  Rung 5: missing `Cargo.toml` refuses with exit code != 0 ("cannot determine the current version from Cargo.toml").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard ("self-test: all mutations caught").
+- Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with automatic fixture cleanup.
+
+MEASURED:
+- `python scripts/verify-agents-mirrors.py --self-test` -> OK (40 pure cases + 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-agents-mirrors.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> 70 of 70 (100%) checker(s) contracted! "nothing owed -- every checker in scope is contracted."
+
+Honest limits: the 6-rung ladder proves pre-commit hook and gate count drift detection against synthetic mirrors; it does not execute the pre-commit hook in a live git repository.
+
+
+
+
+
+
+
+
+

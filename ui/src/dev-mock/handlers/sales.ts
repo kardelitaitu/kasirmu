@@ -499,11 +499,14 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
   // mirrors it onto the mock cart so a browser-mode reload keeps the course, which
   // is the property the real backend provides and the reason this command exists.
   'set_line_course_scoped': (args) => {
-    const raw = (args as { args?: { lineId?: string; course?: string | null } })?.args
-      ?? (args as { lineId?: string; course?: string | null });
+    const raw = (args as { args?: { lineId?: string; course?: string | null; coursingStatus?: string | null } })?.args
+      ?? (args as { lineId?: string; course?: string | null; coursingStatus?: string | null });
     const line = cartState.lines.find((l) => (l as { lineId?: string }).lineId === raw?.lineId);
     if (line) {
       (line as { course?: string | null }).course = raw?.course ?? null;
+      if (raw?.coursingStatus !== undefined) {
+        (line as { coursingStatus?: string | null }).coursingStatus = raw.coursingStatus;
+      }
       saveMockCart();
     }
     return null;
