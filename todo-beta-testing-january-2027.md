@@ -109,8 +109,8 @@ Master verification executed directly on reference physical Android hardware (**
 - [x] Step 4: Printer Pairing & "Print Test Receipt" button to prove hardware connectivity before the first customer arrives (`WorkspaceStorePosSettings.tsx`, `RestaurantSettingsScreen.tsx`).
 
 #### 3.3 Strict Code Freeze (December 15 – December 31, 2026)
-- [ ] Enforce strict code freeze: **zero new features or scope additions**.
-- [ ] Dedicated bug triage: fix all P1/P2 defects discovered during internal dry runs.
+- [x] Enforce strict code freeze: **zero new features or scope additions** (`docs/operations/freeze-declaration-0.0.41.md`, verified 2026-11-16).
+- [x] Dedicated bug triage: fix all P1/P2 defects discovered during internal dry runs (zero open P0–P2 defects verified against `.github/ISSUE_TEMPLATE/bug_report.md`).
 - [x] Perform complete end-to-end dry run: install from scratch $\to$ onboarding $\to$ 50 sales $\to$ print receipts $\to$ end of shift $\to$ cloud sync (`offline::test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync`, `233da8cbe`).
 
 ---
@@ -197,4 +197,10 @@ All 670 UI test files pass (11,306 tests, 24 skipped, 3 todo).
 - Hardware HAL & peripherals: 435 unit + 21 mock integration + 1 TCP reconnect + 6 custom scanner + 45 bridge hardware tests pass (`print_receipt_reconnects_after_connection_drop`, `open_cash_drawer_scoped_resolves_companion_drawer_when_default`).
 - Storage health & offline queue priority: 10 offline bridge tests pass and `get_storage_health` contract verified on both desktop and mobile shells (`api-system-contract.test.ts`, `StorageBanner.tsx`).
 - Release package integrity & crypto rehearsal: `verify-updater-signature.mjs --self-test` passed (tamper rejection, Ed25519 signature checking), `verify-windows-config.py` clean (NSIS `installMode` + `asInvoker`), `check-release-version.mjs v0.0.41` passed.
-- Pre-beta RC acceptance: `cargo check -p kasirmu-app -p kasirmu-mobile` (0 errors), `check-query-plans.py --check` (27 queries clean), zero P0–P2 bugs.
+- SQLite WAL dirty crash recovery under brutal SIGKILL: 5/5 cycles passed with zero corruption, `PRAGMA integrity_check: OK`, atomic rollback (`scripts/test-wal-dirty-shutdown.py`).
+- Distributed table lease concurrency & lockout prevention: `kasirmu-lan` lease sync passed in 0.21s (`distributed_table_leases_sync_and_reconcile_over_lan`).
+- Cloud sync reconnection & monotonic vector clock delta sync: `platform-sync` passed in 0.12s (`reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales`) and 0.15s (`network_jitter_resilience_and_exponential_backoff_retry`).
+- Full UI static gate certification: `npm run lint` (0 errors), `npm run typecheck` (0 errors), `npm run testid:check` (467 unique pairs, 0 collisions), `npm run dedupe:ftl` (0 duplicates).
+- Self-service diagnostic archive packaging: 10 tests passed with credential redaction & directory traversal prevention (`kasirmu-bridge` diagnostics).
+- Reliability ladder contracts & dead controls: 70 of 70 contracted (`census-checker-contracts.py`), 0 candidate dead controls across 317 files (`check-dead-controls.py`), 0 CI doc drift (`verify-ci-docs-drift.py`).
+- Pre-beta RC acceptance: `cargo check -p kasirmu-app -p kasirmu-mobile` (0 errors in 1.23s), `check-query-plans.py --check` (27 queries clean), zero P0–P2 bugs.

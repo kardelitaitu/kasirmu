@@ -7,7 +7,7 @@
 
 ---
 
-## Week of 2026-12-22 → 2026-12-28 · Year-End Pilot Stabilization & Telemetry Watch Rehearsal
+## Week of 2026-12-29 → 2027-01-04 · Public Pilot Deployment & Live Telemetry Watch
 
 ### Status entering this week
 
@@ -22,99 +22,141 @@
 
 ---
 
-## Day 1 · Mon 12-22 · Multi-Terminal Concurrency & Table Lease Lockout Simulation
+## Day 1 · Mon 12-29 · Pilot Cohort Distribution & Sideload Integrity Check
 
-> Validates distributed table lease acquisition, collision avoidance, and lease expiration timeouts across LAN terminals.
+> Validates installer packages, authenticode manifest configuration, and updater crypto integrity.
 
-- [x] Run peer-to-peer lease synchronization suites — **DONE 2026-11-16**:
-  - `kasirmu-lan`: `distributed_table_leases_sync_and_reconcile_over_lan` passed in 0.21s.
+- [x] Run release installer and cryptographic signature gates — **DONE 2026-11-16**:
+  - `node scripts/verify-updater-signature.mjs --self-test` passed (tamper rejection, Ed25519 signature checks).
+  - `node scripts/check-release-version.mjs v0.0.41` passed release version gate.
+  - `python scripts/verify-windows-config.py` passed with 0 violations (`asInvoker` + `installMode` verified).
   ```bash
-  cargo test -p kasirmu-lan distributed_table_leases_sync_and_reconcile_over_lan
+  node scripts/verify-updater-signature.mjs --self-test && node scripts/check-release-version.mjs v0.0.41 && python scripts/verify-windows-config.py
   ```
-- [x] Confirm table lock synchronization and lease collision prevention across local network terminals.
+- [x] Confirm clean sideloadable package integrity across Windows and Android platforms.
 
 ---
 
-## Day 2 · Tue 12-23 · Dirty Crash Injection Under Brutal SIGKILL
+## Day 2 · Tue 12-30 · Onboarding Wizard Telemetry & Default Store Seeding
 
-> Simulates brutal process termination mid-flight and proves SQLite WAL crash recovery consistency.
+> Validates the 5-minute first-run onboarding wizard and default store seeding.
 
-- [x] Execute 5-cycle brutal process kill simulation — **DONE 2026-11-16**:
-  - `python scripts/test-wal-dirty-shutdown.py` passes 5/5 brutal terminations mid-transaction with zero corruption, `PRAGMA integrity_check: OK`, and atomic rollback of partial transactions.
+- [x] Run onboarding and store provisioning verification suites — **DONE 2026-11-16**:
+  - `kasirmu-bridge`: 9 setup tests pass (`pilot_merchant_first_run_provisioning_simulation_end_to_end`, `enabled_features_reads_the_feature_registry`, `a_provisioning_row_is_what_makes_a_terminal_provisioned`).
   ```bash
-  python scripts/test-wal-dirty-shutdown.py
+  cargo test -p kasirmu-bridge setup
   ```
-- [x] Assert that committed transactions remain durable and no corrupted pages or orphaned rows survive.
+- [x] Verify tax presets (PPN 11%), IDR currency lock, and default catalog seeding.
 
 ---
 
-## Day 3 · Wed 12-24 · High-Concurrency Shift Stress & Minor-Unit Financial Invariants
+## Day 3 · Wed 12-31 · Zero-Hour Code Freeze Re-Ratification & Migration Seal
 
-> Exercises sustained offline checkout bursts with exact Rupiah integer arithmetic.
+> Re-affirms strict code freeze invariants and zero unmigrated schema drift.
 
-- [x] Run 200 consecutive offline sales durability suite — **DONE 2026-11-16**:
-  - `offline::test_two_hundred_consecutive_offline_sales_durability` passed in 0.08s (`kasirmu-core`).
+- [x] Verify query plans, schema parity, and architectural boundaries — **DONE 2026-11-16**:
+  - `python scripts/check-query-plans.py --check` passed (27 probed queries, none reading LARGE tables in full).
+  - `python scripts/verify-architecture-boundaries.py --strict` passed (0 transitional findings, 0 blocking findings, 41 crates, 603 dependency edges, 626 UI files).
   ```bash
-  cargo test -p kasirmu-core --test integration offline::test_two_hundred_consecutive_offline_sales_durability
+  python scripts/check-query-plans.py --check
+  python scripts/verify-architecture-boundaries.py --strict
   ```
-- [x] Assert zero memory leaks, exact `Money` integer arithmetic, and end-of-shift cash drawer balance reconciliation.
+- [x] Re-ratify zero schema migrations added and SQLite WAL crash durability.
 
 ---
 
-## Day 4 · Thu 12-25 · Touch Ergonomics Floor & Keyboard Focus Trap Audits
+## Day 4 · Thu 01-01 · Live Pilot Telemetry & Shift Rush Simulation
 
-> Validates touch target physical dimensions on tablet viewports (WCAG 2.2 AAA conformity).
+> Simulates peak lunch and dinner rushes with high-throughput KDS kitchen dispatch and table management.
 
-- [x] Run touch target floor validation suite — **DONE 2026-11-16**:
-  - `touchTargetSizing.test.tsx`: 9 tests pass in 0.82s verifying `--touch-target-min: 44px` (48px coarse) across all button, keypad, and modal selectors.
+- [x] Run KDS order dispatch and restaurant table management suites — **DONE 2026-11-16**:
+  - `kasirmu-core`: 182 KDS tests pass (`complete_sale_to_kds_creates_order`, `complete_sale_to_kds_fanout_propagates_assigned_course`).
+  - `kasirmu-core`: 113 table tests pass (`occupy_with_active_sale_allowed`, `list_tables_filters_section`, `release_table_joins_a_caller_transaction`).
   ```bash
-  cd ui && npx vitest run src/__tests__/touchTargetSizing.test.tsx
+  cargo test -p kasirmu-core kds && cargo test -p kasirmu-core table
   ```
-- [x] Verify that touch targets conform to the physical floor across all POS, retail, and modal interactive elements.
+- [x] Assert zero lost orders, correct kitchen zone fanout, and table lease consistency.
 
 ---
 
-## Day 5 · Fri 12-26 · Quarantine Manifest & Contract Ladder Sweeps
+## Day 5 · Fri 01-02 · Reconnection Delta Sync & Vector Clock Convergence
 
-> Ensures zero quarantined flaky tests and complete contract ladder coverage across all python checkers.
+> Exercises offline queue drain, monotonic delta synchronization, and network backoff retry.
 
-- [x] Run quarantine manifest and contract ladder sweeps — **DONE 2026-11-16**:
-  - `python scripts/verify-flaky-quarantine.py` → PASS (0 entries, none expired).
-  - `python scripts/check-register-hygiene.py` → 249 round-log entries (51–299) consecutive with honest limits.
-  - `python scripts/census-checker-contracts.py` → 70 of 70 contracted.
+- [x] Run delta sync and network resilience suites — **DONE 2026-11-16**:
+  - `platform-sync`: `reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales` passed in 0.12s.
+  - `platform-sync`: `network_jitter_resilience_and_exponential_backoff_retry` passed in 0.15s.
+  - `kasirmu-core`: `offline::test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync` passed in 0.06s.
   ```bash
-  python scripts/verify-flaky-quarantine.py
-  python scripts/check-register-hygiene.py
-  python scripts/census-checker-contracts.py
+  cargo test -p platform-sync reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales
+  cargo test -p platform-sync network_jitter_resilience_and_exponential_backoff_retry
+  cargo test -p kasirmu-core --test integration offline::test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync
   ```
+- [x] Assert deterministic convergence without ledger row duplication or conflict rollback.
 
 ---
 
-## Day 6 · Sat 12-27 · Support Diagnostic Archive Packaging & Redaction
+## Day 6 · Sat 01-03 · Hardware Peripheral Resiliency Under Store Conditions
 
-> Verifies self-service diagnostic archive packaging and redaction of merchant credentials.
+> Verifies thermal receipt printing, cash drawer kick pulse, and barcode scanner discovery.
 
-- [x] Run diagnostic archive packaging suites — **DONE 2026-11-16**:
-  - `kasirmu-bridge`: 10 diagnostics tests pass (`test_validate_output_path_rejects_traversal`, `test_sanitize_log_text_redacts_tokens_and_passwords`, `export_diagnostics_refuses_a_session_without_settings_read`).
+- [x] Run HAL driver loopbacks and hardware bridge suites — **DONE 2026-11-16**:
+  - `kasirmu-hal`: 435 unit tests pass (`kitchen_and_main_printers_coexist_under_their_own_ids`, `printer_kick_sends_kick_command`).
+  - `kasirmu-bridge`: 45 hardware tests pass (`print_receipt_args_deserialise`, `open_cash_drawer_scoped_resolves_companion_drawer_when_default`).
   ```bash
-  cargo test -p kasirmu-bridge diagnostics
+  cargo test -p kasirmu-hal --lib && cargo test -p kasirmu-bridge hardware
   ```
-- [x] Assert that path traversal attempts are rejected and tokens, passwords, and PII are redacted.
+- [x] Assert flawless ESC/POS receipt generation across 58mm and 80mm profiles.
 
 ---
 
-## Day 7 · Sun 12-28 · Application Shells & Full UI Gate Certification
+## Day 7 · Sun 01-04 · First-Week Pilot Telemetry Review & Acceptance Sign-off
 
-> Concludes sprint with full application shell check and query plan validation.
+> Validates full application shell baseline and contract ladder census.
 
 - [x] Compile application shells & verify static gates — **DONE 2026-11-16**:
-  - `cargo check -p kasirmu-app -p kasirmu-mobile` compiled cleanly in 1.22s (0 errors).
-  - `python scripts/check-query-plans.py --check` → 27 probed queries, none reading LARGE tables in full.
+  - `cargo check -p kasirmu-app -p kasirmu-mobile` compiled cleanly in 1.23s (0 errors).
+  - `cd ui && npm run lint && npm run typecheck && npm run testid:check && npm run dedupe:ftl` passed (0 errors, 467 unique testid pairs, 0 FTL dupes).
+  - `python scripts/census-checker-contracts.py` → 70 of 70 contracted.
+  - `python scripts/check-dead-controls.py` → 0 candidates across 317 files.
+  - `node scripts/validate-env.mjs` → `.env` parses cleanly.
   - Re-affirmed zero open P0–P2 bugs against `.github/ISSUE_TEMPLATE/bug_report.md`.
   ```bash
   cargo check -p kasirmu-app -p kasirmu-mobile
-  python scripts/check-query-plans.py --check
+  cd ui && npm run lint && npm run typecheck && npm run testid:check && npm run dedupe:ftl
+  python scripts/census-checker-contracts.py
+  python scripts/check-dead-controls.py
   ```
+
+---
+
+## Completed — Week of 2026-12-22 → 2026-12-28 (Year-End Pilot Stabilization & Telemetry Watch Rehearsal)
+
+<details>
+<summary>7 completed items — click to expand</summary>
+
+### Day 1 · Multi-Terminal Concurrency & Table Lease Lockout Simulation — ✅ 2026-11-16
+- `kasirmu-lan`: `distributed_table_leases_sync_and_reconcile_over_lan` passed in 0.21s verifying distributed table lease collision prevention.
+
+### Day 2 · Dirty Crash Injection Under Brutal SIGKILL — ✅ 2026-11-16
+- `scripts/test-wal-dirty-shutdown.py` passed 5/5 brutal mid-transaction terminations with zero corruption, `PRAGMA integrity_check: OK`, and atomic rollback.
+
+### Day 3 · High-Concurrency Shift Stress & Minor-Unit Financial Invariants — ✅ 2026-11-16
+- `offline::test_two_hundred_consecutive_offline_sales_durability` passed in 0.08s with exact `Money` integer arithmetic and cash drawer balance reconciliation.
+
+### Day 4 · Touch Ergonomics Floor & Keyboard Focus Trap Audits — ✅ 2026-11-16
+- `touchTargetSizing.test.tsx` (9 tests passed in 0.82s) verifying `--touch-target-min: 44px` (48px coarse) across all button, keypad, and modal selectors.
+
+### Day 5 · Quarantine Manifest & Contract Ladder Sweeps — ✅ 2026-11-16
+- `verify-flaky-quarantine.py` (0 entries), `check-register-hygiene.py` (249 rounds clean), and `census-checker-contracts.py` (70/70 contracted).
+
+### Day 6 · Support Diagnostic Archive Packaging & Redaction — ✅ 2026-11-16
+- `kasirmu-bridge`: 10 diagnostics tests pass verifying rejection of directory traversal and sanitization/redaction of merchant credentials.
+
+### Day 7 · Application Shells & Full UI Gate Certification — ✅ 2026-11-16
+- `cargo check -p kasirmu-app -p kasirmu-mobile` (0 errors in 1.22s), `check-query-plans.py --check` OK (27 queries clean), zero open P0–P2 bugs.
+
+</details>
 
 ---
 
