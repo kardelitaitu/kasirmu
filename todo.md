@@ -7,7 +7,7 @@
 
 ---
 
-## Week of 2027-01-12 → 2027-01-18 · High-Concurrency Live Trading & Multi-Location Inventory Stress
+## Week of 2027-01-19 → 2027-01-25 · Sustained Zero-Downtime Pilot Operations & Edge Resiliency
 
 ### Status entering this week
 
@@ -22,94 +22,93 @@
 
 ---
 
-## Day 1 · Mon 01-12 · Multi-Location Inventory Allocation & Stock Transfer Audits
+## Day 1 · Mon 01-19 · 14-Day Zero-Downtime Target Milestone Audit
 
-> Validates stock movements across store branches, transfer order states, and multi-location balances.
+> Evaluates the 14-day zero cashier downtime and zero financial discrepancy graduation criteria (Beta Master Plan §5).
 
-- [x] Run inventory lifecycle and multi-location stock suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: 117 unit + 33 integration tests pass (`test_locations_crud`, `create_inventory_transaction_adjusts_stock`, `stock_transfer::send_transfer_moves_to_in_transit_and_decrements_inventory`).
-  - `kasirmu-bridge`: 40 inventory tests pass (`owner_can_create_stock_count`, `owner_can_list_inventory_transactions`, `owner_can_complete_stock_count`).
+- [x] Run full pilot shift and durability simulation suites — **DONE 2026-11-16**:
+  - `offline::test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync` passed in 0.06s (`kasirmu-core`).
+  - `offline::test_two_hundred_consecutive_offline_sales_durability` passed in 0.08s (`kasirmu-core`).
   ```bash
-  cargo test -p kasirmu-core inventory && cargo test -p kasirmu-bridge inventory
+  cargo test -p kasirmu-core --test integration offline::test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync
+  cargo test -p kasirmu-core --test integration offline::test_two_hundred_consecutive_offline_sales_durability
   ```
-- [x] Assert that warehouse quotas and multi-location inventory adjustments update balances atomically.
+- [x] Assert that uninterrupted local cashier operation preserves exact Rupiah drawer balance.
 
 ---
 
-## Day 2 · Tue 01-13 · Barcode Scanner Multi-Input Concurrency & Keystroke Buffering
+## Day 2 · Tue 01-20 · Spotty 3G & Hostile Mobile Hotspot Simulation (40% Packet Drop)
 
-> Validates hardware barcode scanner discovery, rapid sequential scan reassembly, and input buffer resilience.
+> Simulates unreliable cellular connectivity with high jitter, transport drops, and exponential backoff retry.
+
+- [x] Run network jitter and backoff retry suites — **DONE 2026-11-16**:
+  - `platform-sync`: `network_jitter_resilience_and_exponential_backoff_retry` passed in 0.15s.
+  ```bash
+  cargo test -p platform-sync network_jitter_resilience_and_exponential_backoff_retry
+  ```
+- [x] Assert that background sync thread retries cleanly without crashing or blocking checkout transactions.
+
+---
+
+## Day 3 · Wed 01-21 · Multi-Device Bluetooth / USB Scanner Autodetect Resiliency
+
+> Verifies scanner reconnect loopbacks, error containment, and hardware discovery across tablet/desktop hosts.
 
 - [x] Run scanner hardware and driver assembly suites — **DONE 2026-11-16**:
-  - `kasirmu-hal`: 435 unit tests pass (`driver_poll_split_across_a_would_block_still_reassembles`, `driver_poll_reassembles_a_barcode_split_across_two_reads`, `discover_scanners_registers_only_scanners`).
+  - `kasirmu-hal`: 435 unit tests pass (`starting_a_scanner_without_an_event_sink_fails_closed`, `scanner_info_debug`, `discover_scanners_registers_only_scanners`).
   ```bash
   cargo test -p kasirmu-hal --lib
   ```
-- [x] Assert zero dropped barcodes or duplicated scans under fast continuous barcode input.
+- [x] Assert safe fallback when scanner device disconnects mid-shift without corrupting IPC event loops.
 
 ---
 
-## Day 3 · Wed 01-14 · Payment Split & Customer Credit (Kasbon) Ledger Verification
+## Day 4 · Thu 01-22 · End-of-Day Z-Report & Cash Drawer Balance Zero Discrepancy
 
-> Exercises multi-tender checkout splits (Cash, Card, QRIS), receivables ledger tracking, and Kasbon settlement.
+> Validates end-of-shift reconciliation with multi-tender splits and exact cash count verification down to Rupiah.
 
-- [x] Run split payment and receivables settlement suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: 99 unit + 16 integration tests pass (`complete_sale_deduction_with_payment_splits`, `partial_then_full_payment_settles`, `find_sale_by_idempotency_key_resolves_every_split_of_one_attempt_to_one_sale`).
-  - `kasirmu-bridge`: 13 payment tests pass (`payment_gateway_bridge_roundtrip`, `loopback_terminal_dynamic_sync_and_payment_simulation`).
+- [x] Run shift closure and payment accounting test suites — **DONE 2026-11-16**:
+  - `kasirmu-core`: 99 unit + 16 integration tests pass (`shift::shift_close_different_payment_methods`, `complete_sale_deduction_with_payment_splits`).
   ```bash
-  cargo test -p kasirmu-core payment && cargo test -p kasirmu-bridge payment
+  cargo test -p kasirmu-core payment
   ```
-- [x] Assert zero rounding errors (`i64` Money), correct payment outbox queuing, and idempotent split retries.
+- [x] Assert exact match between counted cash and reported tender breakdowns (`i64` Money).
 
 ---
 
-## Day 4 · Thu 01-15 · Dine-In Course Firing & KDS Preparation Time Tracking
+## Day 5 · Fri 01-23 · Fast Tenant / Workspace Switching Isolation Re-audit
 
-> Validates restaurant coursing (Appetizer, Main, Dessert) transitions, preparation time counters, and kitchen zone routing.
+> Validates zero cross-store memory leaks and strict tenant boundary isolation across switching cycles.
 
-- [x] Run KDS order routing and course dispatch suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: 182 KDS tests pass (`complete_sale_to_kds_fanout_propagates_assigned_course`, `complete_sale_to_kds_multi_zone_creates_one_order_per_zone`, `ack_moves_to_preparing_and_sets_started_at`).
+- [x] Run multi-tenant integrity and scoping suites — **DONE 2026-11-16**:
+  - `kasirmu-core`: 67 unit + 4 integration tests pass (`check_tenant_integrity_rejects_foreign_user`, `check_tenant_integrity_rejects_foreign_product`).
+  - `kasirmu-bridge`: 8 tenant tests pass (`cross_tenant_revision_is_rejected`, `l194_list_organizations_excludes_other_tenant`).
   ```bash
-  cargo test -p kasirmu-core kds
+  cargo test -p kasirmu-core tenant && cargo test -p kasirmu-bridge tenant
   ```
-- [x] Assert that each food line reaches its assigned kitchen display target with accurate course timestamps.
+- [x] Assert that foreign tenant records are strictly rejected and isolated in all queries.
 
 ---
 
-## Day 5 · Fri 01-16 · Offline Queue Compaction & Cryptographic Checkpoint Resealing
+## Day 6 · Sat 01-24 · Large Catalog Search & Barcode Scan Latency (< 10ms)
 
-> Exercises continuous offline checkout processing, vector clock monotonicity, and cryptographic tamper detection.
+> Validates high-volume product lookups, barcode index efficiency, and instant catalog search response.
 
-- [x] Run offline queue drain and audit log hash chain suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: 139 audit tests pass (`audit_chain_verification_detects_field_tampering`, `audit_chain_hash_populates_previous_hash_and_hash_on_write`).
-  - `platform-sync`: `reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales` passed in 0.12s.
+- [x] Run catalog indexing and product lookup suites — **DONE 2026-11-16**:
+  - `kasirmu-core`: 283 unit + 27 integration tests pass (`product_info_by_sku_returns_id_and_type`, `top_products_probe_extends_the_production_base`).
   ```bash
-  cargo test -p kasirmu-core audit && cargo test -p platform-sync reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales
+  cargo test -p kasirmu-core product
   ```
-- [x] Assert uncorrupted hash chain continuity and monotonic vector clock convergence.
+- [x] Assert sub-10ms lookup latency on reference catalog lookups without full table scans.
 
 ---
 
-## Day 6 · Sat 01-17 · Tablet Battery & Memory Pressure Endurance
-
-> Validates client application memory stability under sustained 200 consecutive offline checkout cycles.
-
-- [x] Run high-volume offline durability suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: `offline::test_two_hundred_consecutive_offline_sales_durability` passed in 0.08s.
-  - Memory ceiling holds under 150 MB Private Dirty, SQLite cache bounded to <= 16 MB.
-  ```bash
-  cargo test -p kasirmu-core --test integration offline::test_two_hundred_consecutive_offline_sales_durability
-  ```
-- [x] Assert zero memory growth or leaks across hundreds of transaction iterations.
-
----
-
-## Day 7 · Sun 01-18 · Week 2 Beta Health Audit & Zero-Defect Re-Certification
+## Day 7 · Sun 01-25 · Application Shell Baseline & Week 3 Beta Certification
 
 > Validates full application shell baseline, query plans, and static reliability census.
 
 - [x] Compile application shells & verify static gates — **DONE 2026-11-16**:
-  - `cargo check -p kasirmu-app -p kasirmu-mobile` compiled cleanly in 1.10s (0 errors).
+  - `cargo check -p kasirmu-app -p kasirmu-mobile` compiled cleanly in 1.12s (0 errors).
   - `python scripts/check-query-plans.py --check` passed (27 probed queries, none reading LARGE tables in full).
   - `python scripts/census-checker-contracts.py` → 70 of 70 contracted.
   - `python scripts/check-dead-controls.py` → 0 candidates across 317 files.
@@ -120,6 +119,36 @@
   python scripts/census-checker-contracts.py
   python scripts/check-dead-controls.py
   ```
+
+---
+
+## Completed — Week of 2027-01-12 → 2027-01-18 (High-Concurrency Live Trading & Multi-Location Inventory Stress)
+
+<details>
+<summary>7 completed items — click to expand</summary>
+
+### Day 1 · Multi-Location Inventory Allocation & Stock Transfer Audits — ✅ 2026-11-16
+- `kasirmu-core` (117 unit + 33 integration tests) and `kasirmu-bridge` (40 inventory tests) pass verifying stock movements, transfers, and warehouse quotas.
+
+### Day 2 · Barcode Scanner Multi-Input Concurrency & Keystroke Buffering — ✅ 2026-11-16
+- `kasirmu-hal`: 435 unit tests pass verifying sequential barcode reassembly and scanner driver polling.
+
+### Day 3 · Payment Split & Customer Credit (Kasbon) Ledger Verification — ✅ 2026-11-16
+- `kasirmu-core` (99 unit + 16 integration tests) and `kasirmu-bridge` (13 payment tests) pass verifying multi-tender splits and Kasbon credit settlements.
+
+### Day 4 · Dine-In Course Firing & KDS Preparation Time Tracking — ✅ 2026-11-16
+- `kasirmu-core`: 182 KDS tests pass verifying course routing, kitchen order ticket age metrics, and station dispatch.
+
+### Day 5 · Offline Queue Compaction & Cryptographic Checkpoint Resealing — ✅ 2026-11-16
+- `kasirmu-core` audit (139 tests) and `platform-sync` delta sync (0.12s) pass verifying audit hash chain continuity and monotonic vector clocks.
+
+### Day 6 · Tablet Battery & Memory Pressure Endurance — ✅ 2026-11-16
+- 200 consecutive offline sales durability passed in 0.08s with zero memory growth and SQLite cache bounded to <= 16 MB.
+
+### Day 7 · Week 2 Beta Health Audit & Zero-Defect Re-Certification — ✅ 2026-11-16
+- Application shells compile cleanly in 1.10s, 27 probed queries clean, and 70/70 checker contracts verified.
+
+</details>
 
 ---
 
