@@ -85,6 +85,7 @@ secrets/
 /.claude/
 /.cursor/
 /.windsurf/
+/.perch/
 
 # Editor — shared settings may be committed, everything else is local.
 .vscode/*
@@ -304,6 +305,9 @@ manager-journal.md
 /.agents/gate-gap.raw.txt
 /.agents/phase21-commitmsg.txt
 /.agents/registration-gate-harness-state.md
+/.agents/scratch/
+/.agents/target/
+/.agents/*.py
 # Owner sign-off 2026-09-13: kept on disk, out of status. Both are provably
 # redundant (..rev_ae_bridge_commands.rs is byte-identical to
 # crates/kasirmu-bridge/src/topology/commands.rs; orphan-mod-rs.diff's shims
