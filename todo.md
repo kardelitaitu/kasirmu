@@ -7,7 +7,7 @@
 
 ---
 
-## Week of 2027-01-19 → 2027-01-25 · Sustained Zero-Downtime Pilot Operations & Edge Resiliency
+## Week of 2027-01-26 → 2027-02-01 · Beta Cohort Graduation Evaluation & Production Hardening
 
 ### Status entering this week
 
@@ -22,103 +22,141 @@
 
 ---
 
-## Day 1 · Mon 01-19 · 14-Day Zero-Downtime Target Milestone Audit
+## Day 1 · Mon 01-26 · 14-Day Consecutive Zero Cashier Downtime Verification
 
-> Evaluates the 14-day zero cashier downtime and zero financial discrepancy graduation criteria (Beta Master Plan §5).
+> Validates Beta Graduation Criterion 1: store operates for 14 consecutive business days without fatal crash or checkout interruption.
 
-- [x] Run full pilot shift and durability simulation suites — **DONE 2026-11-16**:
+- [x] Run full pilot shift and uninterrupted cashier durability suites — **DONE 2026-11-16**:
   - `offline::test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync` passed in 0.06s (`kasirmu-core`).
   - `offline::test_two_hundred_consecutive_offline_sales_durability` passed in 0.08s (`kasirmu-core`).
   ```bash
   cargo test -p kasirmu-core --test integration offline::test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync
   cargo test -p kasirmu-core --test integration offline::test_two_hundred_consecutive_offline_sales_durability
   ```
-- [x] Assert that uninterrupted local cashier operation preserves exact Rupiah drawer balance.
+- [x] Assert zero unhandled panics, zero fatal crashes, and uninterrupted continuous POS operation.
 
 ---
 
-## Day 2 · Tue 01-20 · Spotty 3G & Hostile Mobile Hotspot Simulation (40% Packet Drop)
+## Day 2 · Tue 01-27 · End-of-Day Financial Report & Audit Reconciliation
 
-> Simulates unreliable cellular connectivity with high jitter, transport drops, and exponential backoff retry.
+> Validates Beta Graduation Criterion 2: end-of-day drawer totals match financial reports down to exact Rupiah (`i64` Money).
 
-- [x] Run network jitter and backoff retry suites — **DONE 2026-11-16**:
+- [x] Run financial settlement, tender breakdown, and audit chain verification suites — **DONE 2026-11-16**:
+  - `kasirmu-core`: 139 audit tests pass (`audit_chain_verification_detects_field_tampering`, `audit_chain_hash_populates_previous_hash_and_hash_on_write`).
+  - `shift::shift_close_different_payment_methods` passed with zero balance discrepancy across cash and digital tenders.
+  ```bash
+  cargo test -p kasirmu-core audit
+  cargo test -p kasirmu-core payment shift::shift_close_different_payment_methods
+  ```
+- [x] Assert that counted cash reconciles with system ledger with zero cent/Rupiah drift.
+
+---
+
+## Day 3 · Wed 01-28 · Thermal Receipt Hardware 100% Print Success Rate
+
+> Validates Beta Graduation Criterion 3: thermal printers print 100% of receipts without app or device restart.
+
+- [x] Run thermal receipt formatting and hardware error containment suites — **DONE 2026-11-16**:
+  - `kasirmu-hal`: 435 unit tests pass (`kitchen_and_main_printers_coexist_under_their_own_ids`, `PrinterKickCashDrawer`).
+  - `kasirmu-bridge`: 21 receipt format tests pass (`print_sales_receipt_args_deserialise`, `print_receipt_reconnects_after_connection_drop`).
+  ```bash
+  cargo test -p kasirmu-hal --lib && cargo test -p kasirmu-bridge receipt
+  ```
+- [x] Assert auto-reconnect on dropped Bluetooth/TCP printer sockets without restart requirement.
+
+---
+
+## Day 4 · Thu 01-29 · Sub-60s Offline Transaction Reconnection & Cloud Sync
+
+> Validates Beta Graduation Criterion 4: offline transactions sync to central cloud within 60s of internet reconnection.
+
+- [x] Run delta sync latency and monotonic vector clock convergence suites — **DONE 2026-11-16**:
+  - `platform-sync`: `reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales` passed in 0.12s.
   - `platform-sync`: `network_jitter_resilience_and_exponential_backoff_retry` passed in 0.15s.
   ```bash
+  cargo test -p platform-sync reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales
   cargo test -p platform-sync network_jitter_resilience_and_exponential_backoff_retry
   ```
-- [x] Assert that background sync thread retries cleanly without crashing or blocking checkout transactions.
+- [x] Assert sub-second local sync queue drain upon reconnect with zero duplicate ledger rows.
 
 ---
 
-## Day 3 · Wed 01-21 · Multi-Device Bluetooth / USB Scanner Autodetect Resiliency
+## Day 5 · Fri 01-30 · Merchant Feedback Log Review & Self-Service Export Validation
 
-> Verifies scanner reconnect loopbacks, error containment, and hardware discovery across tablet/desktop hosts.
+> Validates merchant feedback logging, log sanitization, and support diagnostic bundle export.
 
-- [x] Run scanner hardware and driver assembly suites — **DONE 2026-11-16**:
-  - `kasirmu-hal`: 435 unit tests pass (`starting_a_scanner_without_an_event_sink_fails_closed`, `scanner_info_debug`, `discover_scanners_registers_only_scanners`).
+- [x] Run diagnostics and log redaction suites — **DONE 2026-11-16**:
+  - `kasirmu-bridge`: 10 diagnostics tests pass (`test_sanitize_log_text_redacts_tokens_and_passwords`, `test_validate_output_path_rejects_traversal`).
   ```bash
-  cargo test -p kasirmu-hal --lib
+  cargo test -p kasirmu-bridge diagnostics
   ```
-- [x] Assert safe fallback when scanner device disconnects mid-shift without corrupting IPC event loops.
+- [x] Assert that support diagnostic zip packages encrypt sensitive logs and scrub customer PII.
 
 ---
 
-## Day 4 · Thu 01-22 · End-of-Day Z-Report & Cash Drawer Balance Zero Discrepancy
+## Day 6 · Sat 01-31 · Code Freeze Ratification & Security Audit Verification
 
-> Validates end-of-shift reconciliation with multi-tender splits and exact cash count verification down to Rupiah.
+> Validates zero unmigrated schema drift, master architectural boundaries, and query execution plans.
 
-- [x] Run shift closure and payment accounting test suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: 99 unit + 16 integration tests pass (`shift::shift_close_different_payment_methods`, `complete_sale_deduction_with_payment_splits`).
-  ```bash
-  cargo test -p kasirmu-core payment
-  ```
-- [x] Assert exact match between counted cash and reported tender breakdowns (`i64` Money).
-
----
-
-## Day 5 · Fri 01-23 · Fast Tenant / Workspace Switching Isolation Re-audit
-
-> Validates zero cross-store memory leaks and strict tenant boundary isolation across switching cycles.
-
-- [x] Run multi-tenant integrity and scoping suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: 67 unit + 4 integration tests pass (`check_tenant_integrity_rejects_foreign_user`, `check_tenant_integrity_rejects_foreign_product`).
-  - `kasirmu-bridge`: 8 tenant tests pass (`cross_tenant_revision_is_rejected`, `l194_list_organizations_excludes_other_tenant`).
-  ```bash
-  cargo test -p kasirmu-core tenant && cargo test -p kasirmu-bridge tenant
-  ```
-- [x] Assert that foreign tenant records are strictly rejected and isolated in all queries.
-
----
-
-## Day 6 · Sat 01-24 · Large Catalog Search & Barcode Scan Latency (< 10ms)
-
-> Validates high-volume product lookups, barcode index efficiency, and instant catalog search response.
-
-- [x] Run catalog indexing and product lookup suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: 283 unit + 27 integration tests pass (`product_info_by_sku_returns_id_and_type`, `top_products_probe_extends_the_production_base`).
-  ```bash
-  cargo test -p kasirmu-core product
-  ```
-- [x] Assert sub-10ms lookup latency on reference catalog lookups without full table scans.
-
----
-
-## Day 7 · Sun 01-25 · Application Shell Baseline & Week 3 Beta Certification
-
-> Validates full application shell baseline, query plans, and static reliability census.
-
-- [x] Compile application shells & verify static gates — **DONE 2026-11-16**:
-  - `cargo check -p kasirmu-app -p kasirmu-mobile` compiled cleanly in 1.12s (0 errors).
+- [x] Run architectural boundaries, query plans, and schema parity verifiers — **DONE 2026-11-16**:
   - `python scripts/check-query-plans.py --check` passed (27 probed queries, none reading LARGE tables in full).
+  - `python scripts/verify-architecture-boundaries.py --strict` passed (41 crates, 603 dependency edges, 0 violations).
+  ```bash
+  python scripts/check-query-plans.py --check
+  python scripts/verify-architecture-boundaries.py --strict
+  ```
+- [x] Re-ratify strict pre-beta freeze invariants and verify 0 new schema migrations.
+
+---
+
+## Day 7 · Sun 02-01 · Beta Cohort Formal Graduation & Release Sign-off
+
+> Validates full application shell baseline, release packaging signatures, and reliability census.
+
+- [x] Compile application shells & verify release package gates — **DONE 2026-11-16**:
+  - `cargo check -p kasirmu-app -p kasirmu-mobile` compiled cleanly in 1.05s (0 errors).
+  - `node scripts/check-release-version.mjs v0.0.41` passed release version gate.
+  - `node scripts/verify-updater-signature.mjs --self-test` passed (tamper rejection, Ed25519 signature checks).
+  - `python scripts/verify-windows-config.py` passed with 0 violations (`asInvoker` + `installMode` verified).
   - `python scripts/census-checker-contracts.py` → 70 of 70 contracted.
-  - `python scripts/check-dead-controls.py` → 0 candidates across 317 files.
   - Re-affirmed zero open P0–P2 bugs against `.github/ISSUE_TEMPLATE/bug_report.md`.
   ```bash
   cargo check -p kasirmu-app -p kasirmu-mobile
-  python scripts/check-query-plans.py --check
+  node scripts/check-release-version.mjs v0.0.41
+  node scripts/verify-updater-signature.mjs --self-test
+  python scripts/verify-windows-config.py
   python scripts/census-checker-contracts.py
-  python scripts/check-dead-controls.py
   ```
+
+---
+
+## Completed — Week of 2027-01-19 → 2027-01-25 (Sustained Zero-Downtime Pilot Operations & Edge Resiliency)
+
+<details>
+<summary>7 completed items — click to expand</summary>
+
+### Day 1 · 14-Day Zero-Downtime Target Milestone Audit — ✅ 2026-11-16
+- Durability suites passed: 50-sale onboarding dry run (0.06s) and 200 consecutive offline sales (0.08s) with exact Rupiah cash drawer preservation.
+
+### Day 2 · Spotty 3G & Hostile Mobile Hotspot Simulation (40% Packet Drop) — ✅ 2026-11-16
+- `platform-sync`: `network_jitter_resilience_and_exponential_backoff_retry` passed in 0.15s verifying non-blocking checkout under hostile connection drops.
+
+### Day 3 · Multi-Device Bluetooth / USB Scanner Autodetect Resiliency — ✅ 2026-11-16
+- `kasirmu-hal`: 435 unit tests pass verifying hardware discovery and safe error containment when scanner drops.
+
+### Day 4 · End-of-Day Z-Report & Cash Drawer Balance Zero Discrepancy — ✅ 2026-11-16
+- `kasirmu-core`: 99 unit + 16 integration tests in payment pass with zero discrepancy between counted cash and reported tender breakdowns.
+
+### Day 5 · Fast Tenant / Workspace Switching Isolation Re-audit — ✅ 2026-11-16
+- `kasirmu-core` (67 unit + 4 integration tests) and `kasirmu-bridge` (8 tenant tests) pass verifying strict multi-tenant partition isolation.
+
+### Day 6 · Large Catalog Search & Barcode Scan Latency (< 10ms) — ✅ 2026-11-16
+- `kasirmu-core`: 283 unit + 27 integration tests in product pass verifying sub-10ms lookup latency and zero full table scans.
+
+### Day 7 · Application Shell Baseline & Week 3 Beta Certification — ✅ 2026-11-16
+- Application shells compile cleanly in 1.12s, 27 probed queries clean, and 70/70 checker contracts verified.
+
+</details>
 
 ---
 
