@@ -492,28 +492,24 @@ fn recovery_midshift_backup_restore_rehearsal_asserts_ledger_equality() {
             .unwrap();
 
         // (e) Log audit events to create a chained audit log
-        let audit1 = AuditEntry {
-            id: "019323ef-0001-7000-8000-000000000001".to_string(),
-            user_id: "u-cashier-1".to_string(),
-            action: "shift.open".to_string(),
-            target_type: Some("shift".to_string()),
-            target_id: Some(open_shift.id.clone()),
-            details: "{\"opening_float\":10000}".to_string(),
-            outcome: "success".to_string(),
-            created_at: "2026-11-13T08:00:00.000Z".to_string(),
-        };
+        let audit1 = AuditEntry::new(
+            "u-cashier-1",
+            "shift.open",
+            Some("shift".to_string()),
+            Some(open_shift.id.clone()),
+            Some("{\"opening_float\":10000}".to_string()),
+            "success",
+        );
         s.log_audit(&audit1).unwrap();
 
-        let audit2 = AuditEntry {
-            id: "019323ef-0002-7000-8000-000000000002".to_string(),
-            user_id: "u-cashier-1".to_string(),
-            action: "sale.complete".to_string(),
-            target_type: Some("sale".to_string()),
-            target_id: Some(sale_id.to_string()),
-            details: "{\"total_minor\":3000}".to_string(),
-            outcome: "success".to_string(),
-            created_at: "2026-11-13T09:15:00.000Z".to_string(),
-        };
+        let audit2 = AuditEntry::new(
+            "u-cashier-1",
+            "sale.complete",
+            Some("sale".to_string()),
+            Some(sale_id.to_string()),
+            Some("{\"total_minor\":3000}".to_string()),
+            "success",
+        );
         s.log_audit(&audit2).unwrap();
 
         // Verify audit chain on live before backup
